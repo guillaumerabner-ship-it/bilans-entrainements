@@ -145,7 +145,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Vérifier côté service qu’une séance supprimée disparaît et transmet un marqueur de suppression. Validation sur un deuxième appareil encore à faire.
 - [x] Modifier une séance serveur coupé, puis vérifier sa conservation locale et son envoi automatique après reconnexion.
 - [ ] Vérifier la cohérence du calendrier, du journal, des volumes, des progressions et des trophées après synchronisation.
-- [x] Tester sur deux appareils l’ajout et la suppression d’une vidéo, puis sa validation ou sa demande de reprise avec commentaire coach. Parcours complet validé le 23 août 2026.
+- [x] Tester sur deux appareils l’ajout et la suppression d’une vidéo, puis sa validation ou sa demande de reprise avec commentaire coach. Parcours complet validé le 23 août 2026 ; la suppression depuis l’espace élève a également été confirmée avec `Supprimée = TRUE` dans `APP_VIDEOS`.
 - [x] Tester un conflit de modification volontaire entre deux appareils : la version possédant la date « Modifié le » la plus récente gagne correctement.
 - [ ] Produire un nouveau rapport fonctionnel après ces essais.
 
