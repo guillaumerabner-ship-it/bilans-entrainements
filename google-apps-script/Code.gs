@@ -71,26 +71,33 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange, for
   if (!sessions.length) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : aucune séance APP_SESSIONS trouvée pour ' + sessionDate); return false; }
   const monthlyExercises = monthlyExercisesForBlock_(monthlySheet, labelColumn, dateRowNumber, rowNumber);
   const progressRows = rowsAsObjects_(progressSheet); const progressByKey = new Map(progressRows.map((item) => [progressKey_(item['Élève ID'], item['Session ID'], item['Index exercice']), item]));
-  let writtenRows = 0;
+  const progressRowNumbers = new Map(); progressRows.forEach((item, index) => progressRowNumbers.set(progressKey_(item['Élève ID'], item['Session ID'], item['Index exercice']), index + 2));
+  const headers = progressSheet.getRange(1, 1, 1, progressSheet.getLastColumn()).getValues()[0].map(String); const commentColumn = headers.indexOf('Commentaire élève') + 1;
+  let writtenRows = 0; const verifiedRowNumbers = [];
   sessions.forEach((session) => {
     const storedExercises = parseJson_(session['Exercices JSON'], []); const exercises = monthlyExercises.length ? monthlyExercises : storedExercises;
     exercises.forEach((exercise, exerciseIndex) => {
       const key = progressKey_('student-owner', session['Session ID'], exerciseIndex); const existing = progressByKey.get(key);
       const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {}; const commentTouched = forceMonthlyValue ? false : Boolean(fields.commentTouched);
-      progressByKey.set(key, {
+      const values = {
         'Session ID': String(session['Session ID']), 'Date séance': sessionDate, 'Séance': String(session.Nom || ''),
         'Exercice ID': String(exercise.matchKey || exercise.id || exercise.name || ''), 'Index exercice': exerciseIndex,
         'Valeurs JSON': existing ? String(existing['Valeurs JSON'] || '[]') : JSON.stringify(exercise.targets || []),
         'Commentaire élève': commentTouched && existing ? String(existing['Commentaire élève'] || '') : comment,
         'Modifié le': new Date(), 'Élève ID': 'student-owner',
         'Champs manuels JSON': JSON.stringify({ manualSets: fields.manualSets || {}, commentTouched: commentTouched }),
-      });
+      };
+      const rowValues = headers.map((header) => values[header] === undefined ? '' : values[header]); let targetRow = progressRowNumbers.get(key);
+      if (targetRow) progressSheet.getRange(targetRow, 1, 1, headers.length).setValues([rowValues]);
+      else { progressSheet.appendRow(rowValues); targetRow = progressSheet.getLastRow(); progressRowNumbers.set(key, targetRow); }
+      verifiedRowNumbers.push(targetRow);
       writtenRows += 1;
     });
   });
   if (!writtenRows) { recordMonthlySyncStatus_(spreadsheet, 'ERREUR : ' + sessionDate + ' trouvé, mais aucun exercice détecté dans le bloc mensuel ni dans APP_SESSIONS'); return false; }
-  replaceRows_(progressSheet, [...progressByKey.values()]); touchDataRevision_();
-  recordMonthlySyncStatus_(spreadsheet, 'OK : ' + sessionDate + ' → ' + writtenRows + ' ligne(s) APP_PROGRESS, commentaire « ' + comment + ' »' + (forceMonthlyValue ? ' (forcé depuis le mois)' : '')); return true;
+  SpreadsheetApp.flush(); const verifiedComments = verifiedRowNumbers.map((targetRow) => String(progressSheet.getRange(targetRow, commentColumn).getDisplayValue() || ''));
+  const verified = verifiedComments.every((value) => value === comment); touchDataRevision_();
+  recordMonthlySyncStatus_(spreadsheet, (verified ? 'OK RELU' : 'ERREUR RELECTURE') + ' : ' + sessionDate + ' → lignes ' + verifiedRowNumbers.join(', ') + ', commentaires « ' + verifiedComments.join(' | ') + ' »' + (forceMonthlyValue ? ' (forcé depuis le mois)' : '')); return verified;
 }
 
 function monthlyExercisesForBlock_(sheet, anchorColumn, dateRowNumber, infoRowNumber) {
