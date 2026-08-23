@@ -13,21 +13,41 @@ const TEST_COACH_EMAIL = 'glogements@gmail.com';
 const GOOGLE_OAUTH_CLIENT_ID = '538510396242-frqqtj211t5deppj6882pueubmvu4s7t.apps.googleusercontent.com';
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Application entraînement').addItem('Initialiser les onglets techniques', 'initializeAppBackend').addToUi();
+  SpreadsheetApp.getUi().createMenu('Application entraînement')
+    .addItem('Initialiser les onglets techniques', 'initializeAppBackend')
+    .addItem('Installer la synchronisation automatique', 'installMonthlyEditTrigger')
+    .addItem('Synchroniser la cellule sélectionnée', 'syncSelectedMonthlyCell')
+    .addToUi();
 }
 
-function onEdit(e) {
+function handleMonthlyEdit(e) {
   try {
     if (!e || !e.range) return;
     const sheet = e.range.getSheet(); const spreadsheet = e.source || sheet.getParent();
     if (!isMonthlySheet_(spreadsheet, sheet.getName())) return;
     syncMonthlyStudentInfoEdit_(spreadsheet, sheet, e.range);
-  } catch (error) { console.error('Synchronisation de la saisie mensuelle', error); }
+  } catch (error) { recordMonthlySyncStatus_(e && e.source, 'ERREUR : ' + error.message); throw error; }
+}
+
+function installMonthlyEditTrigger() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  ScriptApp.getProjectTriggers().filter((trigger) => trigger.getHandlerFunction() === 'handleMonthlyEdit').forEach((trigger) => ScriptApp.deleteTrigger(trigger));
+  ScriptApp.newTrigger('handleMonthlyEdit').forSpreadsheet(spreadsheet).onEdit().create();
+  recordMonthlySyncStatus_(spreadsheet, 'Déclencheur automatique installé');
+  spreadsheet.toast('Synchronisation automatique installée.', 'Application entraînement', 5);
+}
+
+function syncSelectedMonthlyCell() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet(); const range = spreadsheet.getActiveRange();
+  if (!range) throw new Error('Sélectionne d’abord la cellule contenant le commentaire élève.');
+  const result = syncMonthlyStudentInfoEdit_(spreadsheet, range.getSheet(), range);
+  spreadsheet.toast(result ? 'APP_PROGRESS mis à jour.' : 'Cellule non reconnue. Consulte APP_SETTINGS.', 'Application entraînement', 7);
 }
 
 function isMonthlySheet_(spreadsheet, sheetName) {
   const indexSheet = spreadsheet.getSheetByName('INDEX'); if (!indexSheet) return false;
-  return indexSheet.getDataRange().getDisplayValues().slice(1).some((row) => String(row[0] || '').trim() === sheetName);
+  const target = normalizeSheetLabel_(sheetName);
+  return indexSheet.getDataRange().getDisplayValues().slice(1).some((row) => normalizeSheetLabel_(row[0]) === target);
 }
 
 function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
@@ -38,17 +58,17 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
     const label = normalizeSheetLabel_(row[column]);
     if (label.startsWith('infoseleve') || label.startsWith('infoeleve')) { labelColumn = column + 1; break; }
   }
-  if (labelColumn < 1) return false;
+  if (labelColumn < 1) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : libellé Infos élève introuvable près de ' + monthlySheet.getName() + '!' + editedRange.getA1Notation()); return false; }
   const year = Number(String(monthlySheet.getName()).match(/\b20\d{2}\b/)?.[0]) || new Date().getFullYear();
   const firstRow = Math.max(1, rowNumber - 40); const above = monthlySheet.getRange(firstRow, labelColumn, rowNumber - firstRow + 1, 1).getDisplayValues();
   let sessionDate = '';
   for (let index = above.length - 1; index >= 0; index -= 1) { sessionDate = monthlyDate_(above[index][0], year); if (sessionDate) break; }
-  if (!sessionDate) return false;
+  if (!sessionDate) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : date de séance introuvable au-dessus de ' + editedRange.getA1Notation()); return false; }
   const comment = row.slice(labelColumn).map((cell) => String(cell || '').trim()).filter(Boolean).join(' ').trim();
   const sessionSheet = spreadsheet.getSheetByName('APP_SESSIONS'); const progressSheet = spreadsheet.getSheetByName('APP_PROGRESS');
-  if (!sessionSheet || !progressSheet) return false;
+  if (!sessionSheet || !progressSheet) { recordMonthlySyncStatus_(spreadsheet, 'ERREUR : APP_SESSIONS ou APP_PROGRESS introuvable'); return false; }
   const sessions = rowsAsObjects_(sessionSheet).filter((item) => String(item['Élève ID'] || 'student-owner') === 'student-owner' && date_(item['Date séance']) === sessionDate && !truthy_(item['Supprimée']));
-  if (!sessions.length) return false;
+  if (!sessions.length) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : aucune séance APP_SESSIONS trouvée pour ' + sessionDate); return false; }
   const progressRows = rowsAsObjects_(progressSheet); const progressByKey = new Map(progressRows.map((item) => [progressKey_(item['Élève ID'], item['Session ID'], item['Index exercice']), item]));
   sessions.forEach((session) => {
     const exercises = parseJson_(session['Exercices JSON'], []);
@@ -65,7 +85,14 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
       });
     });
   });
-  replaceRows_(progressSheet, [...progressByKey.values()]); touchDataRevision_(); return true;
+  replaceRows_(progressSheet, [...progressByKey.values()]); touchDataRevision_();
+  recordMonthlySyncStatus_(spreadsheet, 'OK : ' + sessionDate + ' → ' + sessions.length + ' séance(s), commentaire « ' + comment + ' »'); return true;
+}
+
+function recordMonthlySyncStatus_(spreadsheet, message) {
+  if (!spreadsheet) return;
+  const settings = spreadsheet.getSheetByName('APP_SETTINGS'); if (!settings) return;
+  upsertByKey_(settings, 'Clé', 'LAST_MONTHLY_EDIT_SYNC', { 'Clé': 'LAST_MONTHLY_EDIT_SYNC', 'Valeur': message, 'Modifié le': new Date() });
 }
 
 function monthlyDate_(value, year) {
