@@ -326,6 +326,16 @@ function openAppearanceSettings() {
   document.querySelector('#accent-color').value = settings.accent; document.querySelector('#accent-code').textContent = settings.accent.toUpperCase(); settingsDialog.showModal();
 }
 document.querySelectorAll('.shell .settings, [data-open-settings]').forEach((button) => button.addEventListener('click', openAppearanceSettings));
+
+function renderCurrentDateLabel() {
+  const label = document.querySelector('.date-label');
+  if (!label) return;
+  const now = new Date();
+  label.dateTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  label.textContent = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now).toLocaleUpperCase('fr-FR');
+}
+renderCurrentDateLabel();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderCurrentDateLabel(); });
 function closeAppearance() { applyAppearance(appearanceSettings()); settingsDialog.close(); }
 document.querySelector('[data-close-settings]').addEventListener('click', closeAppearance);
 settingsDialog.addEventListener('click', (event) => { if (event.target === settingsDialog) closeAppearance(); });

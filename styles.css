@@ -165,5 +165,6 @@ body[data-theme="graphite"] :is(.workout-card h2, .workout-exercise-title strong
 @media (max-width:700px) { .coach-video-review { grid-template-columns:1fr; }.coach-context-bar { right:8px; left:8px; justify-content:space-between; transform:none; } }
 .mobile-settings, .mobile-settings-nav { display:none; }
 @media (max-width:600px) {
-  .mobile-settings-nav { display:flex; border:0; background:transparent; font-family:inherit; }
+  .mobile-settings { display:grid; place-items:center; width:38px; height:38px; margin-left:auto; margin-right:8px; border:1px solid var(--line); background:var(--panel); color:var(--ink); font-size:17px; }
+  .topbar .new-session { margin-left:0; }
 }

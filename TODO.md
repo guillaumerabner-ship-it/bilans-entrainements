@@ -103,6 +103,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Faire de la commande manuelle « Synchroniser la cellule sélectionnée » une reprise forcée depuis l’onglet mensuel, afin de pouvoir retirer un ancien marqueur `commentTouched` qui bloquait volontairement la valeur du tableau.
 - [x] Remplacer l’écriture groupée ambiguë du test mensuel par des écritures directes sur les lignes `APP_PROGRESS`, puis relire immédiatement les cellules et consigner leurs numéros dans `LAST_MONTHLY_EDIT_SYNC`.
 - [x] Limiter la lecture de « Infos élève » au bloc hebdomadaire courant afin de ne pas concaténer le libellé du bloc suivant au commentaire.
+- [x] Calculer automatiquement la date affichée dans l’en-tête et restaurer un accès Paramètres persistant dans l’en-tête mobile.
 - [ ] Paginer ou filtrer les données téléchargées lorsque l’historique couvrira plusieurs années.
 - [ ] Optimiser les recherches et écritures Apps Script pour éviter les parcours ligne par ligne sur une base volumineuse.
 - [ ] Surveiller le poids des historiques de progression, vidéos et séances lors des futurs tests de charge.
