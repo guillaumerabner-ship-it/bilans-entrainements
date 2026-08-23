@@ -290,7 +290,10 @@ function loadSharedSnapshot(force = false) {
   if (sharedSnapshotRunning) return;
   if (!force && sharedSnapshotStudentId === requestedStudentId && now - sharedSnapshotRequestedAt < SHARED_SNAPSHOT_COOLDOWN) return;
   sharedSnapshotRunning = true; sharedSnapshotStudentId = requestedStudentId; sharedSnapshotRequestedAt = now; setSharedStatus('Synchronisation…', 'busy');
-  const since = localStorage.getItem(`shared-backend-snapshot-at-${requestedStudentId}`) || ''; const revision = localStorage.getItem(`shared-backend-revision-${requestedStudentId}`) || '';
+  // Une actualisation forcée doit être complète. Réutiliser les marqueurs
+  // différentiels pouvait masquer une modification venant d'un autre appareil
+  // lorsque son horodatage ou la révision locale étaient déjà mémorisés.
+  const since = force ? '' : localStorage.getItem(`shared-backend-snapshot-at-${requestedStudentId}`) || ''; const revision = force ? '' : localStorage.getItem(`shared-backend-revision-${requestedStudentId}`) || '';
   sharedJsonp('snapshot', (snapshot) => {
     sharedSnapshotRunning = false;
     if (activeStudentId !== requestedStudentId) { loadSharedSnapshot(true); return; }
