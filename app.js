@@ -315,13 +315,14 @@ function applyAppearance(settings = defaultAppearance) {
 function appearanceSettings() { return { ...defaultAppearance, ...readStore('app-appearance', {}) }; }
 applyAppearance(appearanceSettings());
 
-document.querySelector('.shell .settings').addEventListener('click', () => {
+function openAppearanceSettings() {
   const settings = appearanceSettings(); const selected = document.querySelector(`[name="theme"][value="${settings.theme}"]`);
   if (selected) selected.checked = true;
   const shared = sharedBackendConfig(); document.querySelector('#shared-api-url').value = shared.url; document.querySelector('#shared-api-token').value = shared.token;
   setSharedStatus(sharedBackendReady() ? 'Configuré' : 'Non connecté', sharedBackendReady() ? 'ok' : 'off');
   document.querySelector('#accent-color').value = settings.accent; document.querySelector('#accent-code').textContent = settings.accent.toUpperCase(); settingsDialog.showModal();
-});
+}
+document.querySelectorAll('.shell .settings, [data-open-settings]').forEach((button) => button.addEventListener('click', openAppearanceSettings));
 function closeAppearance() { applyAppearance(appearanceSettings()); settingsDialog.close(); }
 document.querySelector('[data-close-settings]').addEventListener('click', closeAppearance);
 settingsDialog.addEventListener('click', (event) => { if (event.target === settingsDialog) closeAppearance(); });
