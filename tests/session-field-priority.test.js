@@ -1,0 +1,22 @@
+const fs = require('fs');
+const vm = require('vm');
+const assert = require('assert');
+const source = fs.readFileSync(require('path').join(__dirname, '..', 'sync-priority.js'), 'utf8');
+const context = {}; vm.createContext(context); vm.runInContext(source, context);
+const sync = context.SessionSyncPriority;
+
+const sheet = { id: 's1', source: 'google-sheet', date: '2026-08-24', name: 'FL', instructions: 'Filmer', exercises: [{ name: 'Front lever', targets: [5, 5] }], isRest: false, isFreeSession: false };
+const edited = { ...sheet, name: 'FL technique' };
+const override = sync.buildSessionOverride(sheet, edited, '2026-08-22T20:00:00.000Z');
+assert.deepStrictEqual(Array.from(override.overrideFields), ['name']);
+const refreshedSheet = { ...sheet, instructions: 'Filmer de profil', exercises: [{ name: 'Front lever', targets: [7, 6] }] };
+const merged = sync.applySessionOverride(refreshedSheet, override);
+assert.strictEqual(merged.name, 'FL technique');
+assert.strictEqual(merged.instructions, 'Filmer de profil');
+assert.strictEqual(merged.exercises[0].targets[0], 7);
+assert.deepStrictEqual(Array.from(sync.effectiveSetValues([7, 6], [], {})), [7, 6]);
+assert.deepStrictEqual(Array.from(sync.effectiveSetValues([7, 6], [9], { 0: true })), [9, 6]);
+assert.deepStrictEqual(Array.from(sync.effectiveSetValues([7, 6], [0], { 0: true })), [6]);
+assert.strictEqual(sync.effectiveComment({}, 'Commentaire du tableau'), 'Commentaire du tableau');
+assert.strictEqual(sync.effectiveComment({ comment: '', commentTouched: true }, 'Commentaire du tableau'), '');
+console.log('Tests de priorité champ par champ : OK');

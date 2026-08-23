@@ -1,0 +1,15 @@
+{
+  "name": "Bilans d'entraînements",
+  "short_name": "Bilans",
+  "description": "Suivi des séances, exercices, vidéos et progrès.",
+  "lang": "fr-FR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1b1c20",
+  "theme_color": "#d65b55",
+  "icons": [
+    { "src": "icons/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
