@@ -79,9 +79,9 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Créer et valider l’interface coach dédiée : liste des élèves à gauche, tableau de synthèse et console de pilotage au centre.
 - [x] Permettre au coach d’ouvrir le calendrier de l’élève sélectionné et de créer, modifier ou programmer ses séances.
 - [x] Ajouter des rôles distincts pour Guillaume et le coach dans l’interface et la base d’utilisateurs.
-- [ ] Permettre au coach de valider une vidéo, demander une correction et écrire un commentaire de revue. Bouton de validation et retrait immédiat du flux de l’élève terminés ; persistance multi-appareil à valider après redéploiement.
+- [x] Permettre au coach de valider une vidéo, demander une correction et écrire un commentaire de revue. Les actions « Valider » et « À refaire » sont synchronisées et produisent un retour lisible côté élève.
 - [ ] Ajouter des filtres pour afficher les vidéos non revues, validées ou à refaire.
-- [ ] Ajouter un fil de feedback par séance et par exercice, visible par l’élève et le coach.
+- [ ] Étendre le premier fil d’actualité vidéo, désormais visible côté élève, en véritable conversation par séance et par exercice avec réponses des deux côtés.
 - [ ] **PRIORITÉ HAUTE — Permettre l’envoi direct de vidéos enregistrées sur le téléphone**, en complément des liens YouTube non répertoriés.
 - [ ] Choisir et configurer un stockage sécurisé pour les fichiers audio et vidéo ; Google Sheets conserve uniquement les identifiants, métadonnées, statuts et liens d’accès.
 - [ ] Sur mobile, permettre de sélectionner une vidéo existante ou d’ouvrir directement la caméra, puis afficher la progression de l’envoi, sa réussite ou son échec.
@@ -108,7 +108,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [ ] Permettre au coach de valider, demander une correction, écrire une réponse et passer directement à l’élément suivant.
 - [ ] Ajouter les états non lu/lu/traité et un compteur visible dans la navigation coach.
 - [ ] Trier par priorité puis ancienneté, tout en signalant les éléments dont la séance est proche ou déjà passée.
-- [ ] Faire apparaître le retour du coach dans l’application élève et prévoir un indicateur de nouveau feedback.
+- [x] Faire apparaître le retour vidéo du coach dans l’application élève avec son statut, son commentaire et un compteur dans le fil coach.
 - [ ] Tester le parcours complet sur téléphone : enregistrer un vocal, envoyer une vidéo, couper puis rétablir Internet, consulter et traiter les deux éléments côté coach.
 
 ## Performances
@@ -145,7 +145,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Vérifier côté service qu’une séance supprimée disparaît et transmet un marqueur de suppression. Validation sur un deuxième appareil encore à faire.
 - [x] Modifier une séance serveur coupé, puis vérifier sa conservation locale et son envoi automatique après reconnexion.
 - [ ] Vérifier la cohérence du calendrier, du journal, des volumes, des progressions et des trophées après synchronisation.
-- [ ] Tester l’ajout et la suppression de vidéos sur deux appareils.
+- [x] Tester sur deux appareils l’ajout et la suppression d’une vidéo, puis sa validation ou sa demande de reprise avec commentaire coach. Parcours complet validé le 23 août 2026.
 - [x] Tester un conflit de modification volontaire entre deux appareils : la version possédant la date « Modifié le » la plus récente gagne correctement.
 - [ ] Produire un nouveau rapport fonctionnel après ces essais.
 
