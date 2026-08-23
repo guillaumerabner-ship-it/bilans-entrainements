@@ -93,6 +93,7 @@ function doPost(e) {
     else if (payload.action === 'exercise-archive') changed = upsertExercise_(spreadsheet, Object.assign({}, scopedData, { archived: true, ownerId: access.studentId }));
     else if (payload.action === 'session-upsert') changed = upsertSession_(spreadsheet, scopedData, false);
     else if (payload.action === 'session-delete') changed = upsertSession_(spreadsheet, scopedData, true);
+    else if (payload.action === 'sheet-calendar-sync') changed = syncSheetCalendar_(spreadsheet, scopedData);
     else if (payload.action === 'bulk-sync') changed = bulkSync_(spreadsheet, payload.data || {}, access.studentId);
     else throw new Error('Action inconnue.');
     const revision = changed ? touchDataRevision_() : currentDataRevision_();
@@ -132,8 +133,8 @@ function authorizeStudent_(credential, requestedStudentId) {
 
 function upsertProgress_(spreadsheet, data) {
   if (!data.sessionId || data.exerciseIndex === undefined) throw new Error('Séance ou index exercice manquant.');
-  const key = data.sessionId + '|' + data.exerciseIndex; const sheet = spreadsheet.getSheetByName('APP_PROGRESS');
-  return upsertCompositeIfNewer_(sheet, key, (row) => row['Session ID'] + '|' + row['Index exercice'], data.modifiedAt, {
+  const key = progressKey_(data.studentId, data.sessionId, data.exerciseIndex); const sheet = spreadsheet.getSheetByName('APP_PROGRESS');
+  return upsertCompositeIfNewer_(sheet, key, (row) => progressKey_(row['Élève ID'], row['Session ID'], row['Index exercice']), data.modifiedAt, {
     'Session ID': data.sessionId, 'Date séance': data.date || '', 'Séance': data.sessionName || '', 'Exercice ID': data.exerciseKey || '',
     'Index exercice': Number(data.exerciseIndex), 'Valeurs JSON': JSON.stringify(data.values || []), 'Commentaire élève': data.comment || '', 'Modifié le': writeDate_(data.modifiedAt), 'Élève ID': data.studentId || 'student-owner', 'Champs manuels JSON': JSON.stringify({ manualSets: data.manualSets || {}, commentTouched: Boolean(data.commentTouched) }),
   });
@@ -157,11 +158,68 @@ function upsertExercise_(spreadsheet, data) {
 
 function upsertSession_(spreadsheet, data, deleted) {
   if (!data.id) throw new Error('Identifiant de séance manquant.');
-  return upsertByKeyIfNewer_(spreadsheet.getSheetByName('APP_SESSIONS'), 'Session ID', data.id, data.modifiedAt, {
+  const sheet = spreadsheet.getSheetByName('APP_SESSIONS'); const key = sessionKey_(data.studentId, data.id);
+  return upsertCompositeIfNewer_(sheet, key, (row) => sessionKey_(row['Élève ID'], row['Session ID']), data.modifiedAt, {
     'Session ID': data.id, 'Date séance': data.date || '', 'Nom': data.name || '', 'Source': data.source || 'manual',
     'Repos': Boolean(data.isRest), 'Séance libre': Boolean(data.isFreeSession), 'Consignes': data.instructions || '',
     'Exercices JSON': JSON.stringify(data.exercises || []), 'Supprimée': Boolean(deleted), 'Modifié le': writeDate_(data.modifiedAt), 'Élève ID': data.studentId || 'student-owner', 'Champs modifiés JSON': JSON.stringify(data.overrideFields || []),
   });
+}
+
+function syncSheetCalendar_(spreadsheet, data) {
+  const studentId = data.studentId || 'student-owner';
+  const sessionSheet = spreadsheet.getSheetByName('APP_SESSIONS'); const progressSheet = spreadsheet.getSheetByName('APP_PROGRESS');
+  const sessionRows = rowsAsObjects_(sessionSheet); const progressRows = rowsAsObjects_(progressSheet);
+  const sessionsByKey = new Map(sessionRows.map((row) => [sessionKey_(row['Élève ID'], row['Session ID']), row]));
+  const progressByKey = new Map(progressRows.map((row) => [progressKey_(row['Élève ID'], row['Session ID'], row['Index exercice']), row]));
+  let changed = false;
+  (data.sessions || []).forEach((session) => {
+    if (!session.id || !session.date) return;
+    const scopedSession = Object.assign({}, session, { studentId: studentId }); const sessionKey = sessionKey_(studentId, session.id);
+    sessionsByKey.set(sessionKey, mergeSheetSessionRow_(sessionsByKey.get(sessionKey), scopedSession)); changed = true;
+    (session.exercises || []).forEach((exercise, exerciseIndex) => {
+      const item = typeof exercise === 'string' ? { name: exercise, targets: [] } : exercise;
+      const progressData = {
+        sessionId: session.id, date: session.date, sessionName: session.name, exerciseKey: item.matchKey || item.id || item.name || '',
+        exerciseIndex: exerciseIndex, values: item.targets || [], comment: session.studentInfo || '', studentId: studentId,
+        modifiedAt: session.modifiedAt,
+      };
+      const progressKey = progressKey_(studentId, session.id, exerciseIndex);
+      progressByKey.set(progressKey, mergeSheetProgressRow_(progressByKey.get(progressKey), progressData));
+    });
+  });
+  if (changed) { replaceRows_(sessionSheet, [...sessionsByKey.values()]); replaceRows_(progressSheet, [...progressByKey.values()]); }
+  return changed;
+}
+
+function mergeSheetSessionRow_(existing, data) {
+  const manualFields = existing ? parseJson_(existing['Champs modifiés JSON'], []) : [];
+  const sheetValues = {
+    'Session ID': data.id, 'Date séance': data.date || '', 'Nom': data.name || '', 'Source': 'google-sheet',
+    'Repos': Boolean(data.isRest), 'Séance libre': Boolean(data.isFreeSession), 'Consignes': data.instructions || '',
+    'Exercices JSON': JSON.stringify(data.exercises || []), 'Supprimée': existing ? truthy_(existing['Supprimée']) : false, 'Modifié le': writeDate_(data.modifiedAt),
+    'Élève ID': data.studentId || 'student-owner', 'Champs modifiés JSON': JSON.stringify(manualFields),
+  };
+  const columnsForField = { date: 'Date séance', name: 'Nom', instructions: 'Consignes', exercises: 'Exercices JSON', isRest: 'Repos', isFreeSession: 'Séance libre' };
+  manualFields.forEach((field) => { const column = columnsForField[field]; if (column && existing) sheetValues[column] = existing[column]; });
+  return sheetValues;
+}
+
+function mergeSheetProgressRow_(existing, data) {
+  const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {};
+  const manualSets = fields.manualSets || {}; const sheetValues = Array.isArray(data.values) ? data.values : [];
+  const existingValues = existing ? parseJson_(existing['Valeurs JSON'], []) : [];
+  const count = Math.max(sheetValues.length, existingValues.length); const values = [];
+  for (let index = 0; index < count; index += 1) {
+    values[index] = manualSets[index] || manualSets[String(index)] ? existingValues[index] : sheetValues[index];
+  }
+  const commentTouched = Boolean(fields.commentTouched); const comment = commentTouched && existing ? String(existing['Commentaire élève'] || '') : String(data.comment || '');
+  return {
+    'Session ID': data.sessionId, 'Date séance': data.date || '', 'Séance': data.sessionName || '', 'Exercice ID': data.exerciseKey || '',
+    'Index exercice': Number(data.exerciseIndex), 'Valeurs JSON': JSON.stringify(values), 'Commentaire élève': comment,
+    'Modifié le': writeDate_(data.modifiedAt), 'Élève ID': data.studentId || 'student-owner',
+    'Champs manuels JSON': JSON.stringify({ manualSets: manualSets, commentTouched: commentTouched }),
+  };
 }
 
 function bulkSync_(spreadsheet, data, studentId) {
@@ -209,6 +267,7 @@ function upsertByKey_(sheet, keyHeader, key, values) { upsertComposite_(sheet, S
 function upsertByKeyIfNewer_(sheet, keyHeader, key, modifiedAt, values) { return upsertCompositeIfNewer_(sheet, String(key), (row) => String(row[keyHeader]), modifiedAt, values); }
 function upsertCompositeIfNewer_(sheet, key, keyForRow, modifiedAt, values) { const rows = rowsAsObjects_(sheet); const existing = rows.find((row) => keyForRow(row) === key); const incoming = writeDate_(modifiedAt); if (existing && new Date(existing['Modifié le']).getTime() > incoming.getTime()) return false; upsertComposite_(sheet, key, keyForRow, Object.assign({}, values, { 'Modifié le': incoming })); return true; }
 function upsertComposite_(sheet, key, keyForRow, values) { const rows = rowsAsObjects_(sheet); const index = rows.findIndex((row) => keyForRow(row) === key); const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String); const row = headers.map((header) => values[header] === undefined ? '' : values[header]); if (index >= 0) sheet.getRange(index + 2, 1, 1, headers.length).setValues([row]); else sheet.appendRow(row); }
+function replaceRows_(sheet, rows) { const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String); const previousCount = Math.max(0, sheet.getLastRow() - 1); const values = rows.map((row) => headers.map((header) => row[header] === undefined ? '' : row[header])); if (values.length) sheet.getRange(2, 1, values.length, headers.length).setValues(values); if (previousCount > values.length) sheet.getRange(values.length + 2, 1, previousCount - values.length, headers.length).clearContent(); }
 function deleteByKey_(sheet, keyHeader, key) { const rows = rowsAsObjects_(sheet); const index = rows.findIndex((row) => String(row[keyHeader]) === String(key)); if (index >= 0) sheet.deleteRow(index + 2); }
 function assertToken_(token) { const expected = PropertiesService.getScriptProperties().getProperty('APP_API_TOKEN'); if (!expected || token !== expected) throw new Error('Accès refusé.'); }
 function parseJson_(value, fallback) { try { return JSON.parse(String(value || '')); } catch (error) { return fallback; } }
@@ -216,6 +275,8 @@ function iso_(value) { const date = value instanceof Date ? value : new Date(val
 function writeDate_(value) { const date = value ? new Date(value) : new Date(); return isNaN(date.getTime()) ? new Date() : date; }
 function date_(value) { if (value instanceof Date) return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd'); return String(value || '').slice(0, 10); }
 function truthy_(value) { return value === true || String(value).toLowerCase() === 'true' || String(value) === '1'; }
+function sessionKey_(studentId, sessionId) { return String(studentId || 'student-owner') + '|' + String(sessionId || ''); }
+function progressKey_(studentId, sessionId, exerciseIndex) { return sessionKey_(studentId, sessionId) + '|' + String(exerciseIndex); }
 function digest_(value) { return Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value))).slice(0, 40); }
 function ensureDataRevision_() { const properties = PropertiesService.getScriptProperties(); if (!properties.getProperty('APP_DATA_REVISION')) properties.setProperty('APP_DATA_REVISION', String(Date.now())); }
 function currentDataRevision_() { ensureDataRevision_(); return PropertiesService.getScriptProperties().getProperty('APP_DATA_REVISION'); }

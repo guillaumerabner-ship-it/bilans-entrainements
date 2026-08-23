@@ -208,7 +208,7 @@ function sharedBackendReady() { const config = sharedBackendConfig(); return /^h
 function setSharedStatus(text, state = 'off') { const status = document.querySelector('#shared-api-status'); if (!status) return; status.textContent = text; status.dataset.state = state; }
 function queueSharedWrite(action, data) {
   if (!sharedBackendReady()) return;
-  const studentActions = new Set(['progress-upsert', 'video-upsert', 'session-upsert', 'session-delete']); const scopedData = studentActions.has(action) && data && !Array.isArray(data) ? { ...data, studentId: data.studentId || activeStudentId || 'student-owner' } : data;
+  const studentActions = new Set(['progress-upsert', 'video-upsert', 'session-upsert', 'session-delete', 'sheet-calendar-sync']); const scopedData = studentActions.has(action) && data && !Array.isArray(data) ? { ...data, studentId: data.studentId || activeStudentId || 'student-owner' } : data;
   const outbox = readStore(SHARED_OUTBOX_KEY, []); outbox.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, studentId: activeStudentId || 'student-owner', action, data: scopedData });
   localStorage.setItem(SHARED_OUTBOX_KEY, JSON.stringify(outbox)); flushSharedOutbox();
 }
@@ -935,6 +935,15 @@ function saveIndexedSessions(groups, loadedTabs, totalTabs) {
   localStorage.setItem('sheet-calendar-tabs', JSON.stringify(loadedTabs));
   localStorage.setItem('sheet-last-sync', new Date().toISOString());
   localStorage.removeItem('sheet-sessions-primary'); localStorage.removeItem('sheet-sessions-recent'); localStorage.removeItem('sheet-sessions-calendar');
+  if (sharedBackendReady() && currentGoogleCredential()) {
+    queueSharedWrite('sheet-calendar-sync', {
+      sessions: combined.map((session) => ({
+        id: session.id, date: session.date, name: session.name, source: 'google-sheet', isRest: Boolean(session.isRest),
+        isFreeSession: Boolean(session.isFreeSession), instructions: session.coachInfo || '', exercises: session.exercises || [],
+        studentInfo: session.studentInfo || '', modifiedAt: new Date().toISOString(),
+      })),
+    });
+  }
   const first = combined[0].date; const last = combined.at(-1).date;
   document.querySelector('#sync-status').textContent = `${SHEET_SOURCE_LABEL} · ${loadedTabs.length}/${totalTabs} onglets synchronisés · ${new Date(`${first}T12:00`).toLocaleDateString('fr-FR')} – ${new Date(`${last}T12:00`).toLocaleDateString('fr-FR')}`;
   scheduleDataRender();
