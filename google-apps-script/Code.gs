@@ -78,14 +78,14 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange, for
     const storedExercises = parseJson_(session['Exercices JSON'], []); const exercises = monthlyExercises.length ? monthlyExercises : storedExercises;
     exercises.forEach((exercise, exerciseIndex) => {
       const key = progressKey_('student-owner', session['Session ID'], exerciseIndex); const existing = progressByKey.get(key);
-      const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {}; const commentTouched = forceMonthlyValue ? false : Boolean(fields.commentTouched);
+      const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {};
       const values = {
         'Session ID': String(session['Session ID']), 'Date séance': sessionDate, 'Séance': String(session.Nom || ''),
         'Exercice ID': String(exercise.matchKey || exercise.id || exercise.name || ''), 'Index exercice': exerciseIndex,
         'Valeurs JSON': existing ? String(existing['Valeurs JSON'] || '[]') : JSON.stringify(exercise.targets || []),
-        'Commentaire élève': commentTouched && existing ? String(existing['Commentaire élève'] || '') : comment,
+        'Commentaire élève': comment,
         'Modifié le': new Date(), 'Élève ID': 'student-owner',
-        'Champs manuels JSON': JSON.stringify({ manualSets: fields.manualSets || {}, commentTouched: commentTouched }),
+        'Champs manuels JSON': JSON.stringify({ manualSets: fields.manualSets || {}, commentTouched: false }),
       };
       const rowValues = headers.map((header) => values[header] === undefined ? '' : values[header]); let targetRow = progressRowNumbers.get(key);
       if (targetRow) progressSheet.getRange(targetRow, 1, 1, headers.length).setValues([rowValues]);

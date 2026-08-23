@@ -126,6 +126,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Rendre ce déclencheur installable et diagnosticable depuis le menu du classeur, avec une synchronisation manuelle de la cellule sélectionnée et un statut `LAST_MONTHLY_EDIT_SYNC` dans `APP_SETTINGS`.
 - [x] Faire lire au déclencheur les exercices directement dans le bloc mensuel lorsque les lignes `APP_PROGRESS` n’existent pas encore, et compter explicitement les lignes écrites dans le diagnostic.
 - [x] Faire de la commande manuelle « Synchroniser la cellule sélectionnée » une reprise forcée depuis l’onglet mensuel, afin de pouvoir retirer un ancien marqueur `commentTouched` qui bloquait volontairement la valeur du tableau.
+- [x] Considérer une nouvelle édition humaine de « Infos élève » comme la valeur la plus récente et retirer les anciens marqueurs `commentTouched` sur toutes les lignes d’exercice concernées.
 - [x] Remplacer l’écriture groupée ambiguë du test mensuel par des écritures directes sur les lignes `APP_PROGRESS`, puis relire immédiatement les cellules et consigner leurs numéros dans `LAST_MONTHLY_EDIT_SYNC`.
 - [x] Limiter la lecture de « Infos élève » au bloc hebdomadaire courant afin de ne pas concaténer le libellé du bloc suivant au commentaire.
 - [x] Répercuter les commentaires et séries saisis dans l’application vers le bloc correspondant des onglets mensuels, y compris lorsqu’un commentaire est volontairement vidé.
