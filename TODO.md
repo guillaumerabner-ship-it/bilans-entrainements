@@ -8,7 +8,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 
 - [x] **PRIORITÉ HAUTE — Implémenter la synchronisation fiable des onglets mensuels « MOIS 2026 »** avec des identifiants de séance stables et une priorité limitée aux champs réellement saisis dans l’application.
 - [x] Redéployer le schéma 5 du service Google Apps Script.
-- [ ] Valider en conditions réelles la nouvelle ingestion d’une modification de séance, séries et commentaire élève depuis un onglet mensuel vers `APP_SESSIONS` et `APP_PROGRESS`. La consigne coach est validée : « Test Sync » saisi le 23 août 2026 apparaît dans l'application après actualisation.
+- [x] Valider en conditions réelles l’ingestion du commentaire élève depuis un onglet mensuel vers `APP_PROGRESS` : « Test App 2 Infos élève » du 23 août 2026 a été écrit puis relu dans les lignes 9, 10 et 11. La consigne coach « Test Sync » reste également validée.
 - [x] Corriger les anciennes lignes `APP_SESSIONS` sans liste de champs modifiés afin qu’une consigne vide historique ne masque plus la valeur actuelle de « Infos coach » dans les onglets mensuels.
 - [x] Optimiser le bouton « Actualiser les données » : charger au maximum deux onglets mensuels simultanément et ne calculer la liste des séances qu’une fois par rendu du calendrier.
 - [ ] **PRIORITÉ HAUTE — Activer le bouton « Voir tout » du journal** et créer une page dédiée à l’historique complet des séances.
@@ -59,7 +59,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 
 - [x] Définir la priorité en cas de conflit : une donnée explicitement saisie dans l’application prime sur la donnée du tableau mensuel pour le même champ ; en l’absence de saisie dans l’application, la valeur à jour du tableau est utilisée.
 - [x] Appliquer et tester localement cette priorité champ par champ pour les séries, commentaires, consignes et propriétés de séance, sans masquer les autres mises à jour provenant du tableau.
-- [ ] Valider de bout en bout l’ingestion ajoutée pour les onglets « MOIS 2026 » : séance et consignes vers `APP_SESSIONS`, séries et commentaire élève vers `APP_PROGRESS`. La consigne coach « Test Sync » du 23 août 2026 est validée.
+- [ ] Terminer la validation de bout en bout des onglets « MOIS 2026 » : le commentaire élève vers `APP_PROGRESS` et la consigne coach sont validés ; il reste à tester une modification de série et de structure de séance.
 - [x] Lire automatiquement les onglets mensuels référencés dans `INDEX`, au démarrage, au retour sur l’application et toutes les quinze minutes.
 - [x] Considérer les valeurs numériques renseignées sous les exercices des onglets mensuels comme des séries réalisées pour le calendrier, le journal, les volumes, les progressions et les trophées.
 - [ ] Décider si les séances créées dans l’application doivent aussi modifier visuellement les cases des onglets mensuels, ou si `APP_SESSIONS` reste leur source dédiée.
