@@ -40,7 +40,7 @@ function installMonthlyEditTrigger() {
 function syncSelectedMonthlyCell() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet(); const range = spreadsheet.getActiveRange();
   if (!range) throw new Error('Sélectionne d’abord la cellule contenant le commentaire élève.');
-  const result = syncMonthlyStudentInfoEdit_(spreadsheet, range.getSheet(), range);
+  const result = syncMonthlyStudentInfoEdit_(spreadsheet, range.getSheet(), range, true);
   spreadsheet.toast(result ? 'APP_PROGRESS mis à jour.' : 'Cellule non reconnue. Consulte APP_SETTINGS.', 'Application entraînement', 7);
 }
 
@@ -50,7 +50,7 @@ function isMonthlySheet_(spreadsheet, sheetName) {
   return indexSheet.getDataRange().getDisplayValues().slice(1).some((row) => normalizeSheetLabel_(row[0]) === target);
 }
 
-function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
+function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange, forceMonthlyValue) {
   const rowNumber = editedRange.getRow(); const editedColumn = editedRange.getColumn();
   const row = monthlySheet.getRange(rowNumber, 1, 1, Math.max(editedColumn, monthlySheet.getLastColumn())).getDisplayValues()[0];
   let labelColumn = -1;
@@ -76,7 +76,7 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
     const storedExercises = parseJson_(session['Exercices JSON'], []); const exercises = monthlyExercises.length ? monthlyExercises : storedExercises;
     exercises.forEach((exercise, exerciseIndex) => {
       const key = progressKey_('student-owner', session['Session ID'], exerciseIndex); const existing = progressByKey.get(key);
-      const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {}; const commentTouched = Boolean(fields.commentTouched);
+      const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {}; const commentTouched = forceMonthlyValue ? false : Boolean(fields.commentTouched);
       progressByKey.set(key, {
         'Session ID': String(session['Session ID']), 'Date séance': sessionDate, 'Séance': String(session.Nom || ''),
         'Exercice ID': String(exercise.matchKey || exercise.id || exercise.name || ''), 'Index exercice': exerciseIndex,
@@ -90,7 +90,7 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
   });
   if (!writtenRows) { recordMonthlySyncStatus_(spreadsheet, 'ERREUR : ' + sessionDate + ' trouvé, mais aucun exercice détecté dans le bloc mensuel ni dans APP_SESSIONS'); return false; }
   replaceRows_(progressSheet, [...progressByKey.values()]); touchDataRevision_();
-  recordMonthlySyncStatus_(spreadsheet, 'OK : ' + sessionDate + ' → ' + writtenRows + ' ligne(s) APP_PROGRESS, commentaire « ' + comment + ' »'); return true;
+  recordMonthlySyncStatus_(spreadsheet, 'OK : ' + sessionDate + ' → ' + writtenRows + ' ligne(s) APP_PROGRESS, commentaire « ' + comment + ' »' + (forceMonthlyValue ? ' (forcé depuis le mois)' : '')); return true;
 }
 
 function monthlyExercisesForBlock_(sheet, anchorColumn, dateRowNumber, infoRowNumber) {
