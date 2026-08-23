@@ -48,5 +48,6 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(context.monthlyExercisesForBloc
   { name: 'OL FL', targets: [8, 7, 6] },
   { name: 'FL tuck raises', targets: [5, 4, 4] },
 ]);
+assert.strictEqual(context.monthlyInfoText_(['Infos élève', 'Test App 2', '', '', 'Infos élève', ''], 1), 'Test App 2');
 
 console.log('Tests ingestion MOIS vers APP : OK');

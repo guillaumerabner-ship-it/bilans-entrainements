@@ -64,7 +64,7 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange, for
   let sessionDate = ''; let dateRowNumber = 0;
   for (let index = above.length - 1; index >= 0; index -= 1) { sessionDate = monthlyDate_(above[index][0], year); if (sessionDate) { dateRowNumber = firstRow + index; break; } }
   if (!sessionDate) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : date de séance introuvable au-dessus de ' + editedRange.getA1Notation()); return false; }
-  const comment = row.slice(labelColumn).map((cell) => String(cell || '').trim()).filter(Boolean).join(' ').trim();
+  const comment = monthlyInfoText_(row, labelColumn);
   const sessionSheet = spreadsheet.getSheetByName('APP_SESSIONS'); const progressSheet = spreadsheet.getSheetByName('APP_PROGRESS');
   if (!sessionSheet || !progressSheet) { recordMonthlySyncStatus_(spreadsheet, 'ERREUR : APP_SESSIONS ou APP_PROGRESS introuvable'); return false; }
   const sessions = rowsAsObjects_(sessionSheet).filter((item) => String(item['Élève ID'] || 'student-owner') === 'student-owner' && date_(item['Date séance']) === sessionDate && !truthy_(item['Supprimée']));
@@ -111,6 +111,16 @@ function monthlyExercisesForBlock_(sheet, anchorColumn, dateRowNumber, infoRowNu
     exercises.push({ name: name, targets: targets });
   }
   return exercises;
+}
+
+function monthlyInfoText_(row, labelColumn) {
+  const parts = [];
+  for (let index = labelColumn; index < Math.min(row.length, labelColumn + 12); index += 1) {
+    const value = String(row[index] || '').trim(); const normalized = normalizeSheetLabel_(value);
+    if (normalized.startsWith('infoscoach') || normalized.startsWith('infocoach') || normalized.startsWith('infoseleve') || normalized.startsWith('infoeleve')) break;
+    if (value && value !== '0') parts.push(value);
+  }
+  return parts.join(' ').trim();
 }
 
 function recordMonthlySyncStatus_(spreadsheet, message) {
