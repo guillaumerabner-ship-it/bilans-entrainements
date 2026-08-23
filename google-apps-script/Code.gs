@@ -16,6 +16,65 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Application entraînement').addItem('Initialiser les onglets techniques', 'initializeAppBackend').addToUi();
 }
 
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    const sheet = e.range.getSheet(); const spreadsheet = e.source || sheet.getParent();
+    if (!isMonthlySheet_(spreadsheet, sheet.getName())) return;
+    syncMonthlyStudentInfoEdit_(spreadsheet, sheet, e.range);
+  } catch (error) { console.error('Synchronisation de la saisie mensuelle', error); }
+}
+
+function isMonthlySheet_(spreadsheet, sheetName) {
+  const indexSheet = spreadsheet.getSheetByName('INDEX'); if (!indexSheet) return false;
+  return indexSheet.getDataRange().getDisplayValues().slice(1).some((row) => String(row[0] || '').trim() === sheetName);
+}
+
+function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
+  const rowNumber = editedRange.getRow(); const editedColumn = editedRange.getColumn();
+  const row = monthlySheet.getRange(rowNumber, 1, 1, Math.max(editedColumn, monthlySheet.getLastColumn())).getDisplayValues()[0];
+  let labelColumn = -1;
+  for (let column = editedColumn - 1; column >= Math.max(0, editedColumn - 14); column -= 1) {
+    const label = normalizeSheetLabel_(row[column]);
+    if (label.startsWith('infoseleve') || label.startsWith('infoeleve')) { labelColumn = column + 1; break; }
+  }
+  if (labelColumn < 1) return false;
+  const year = Number(String(monthlySheet.getName()).match(/\b20\d{2}\b/)?.[0]) || new Date().getFullYear();
+  const firstRow = Math.max(1, rowNumber - 40); const above = monthlySheet.getRange(firstRow, labelColumn, rowNumber - firstRow + 1, 1).getDisplayValues();
+  let sessionDate = '';
+  for (let index = above.length - 1; index >= 0; index -= 1) { sessionDate = monthlyDate_(above[index][0], year); if (sessionDate) break; }
+  if (!sessionDate) return false;
+  const comment = row.slice(labelColumn).map((cell) => String(cell || '').trim()).filter(Boolean).join(' ').trim();
+  const sessionSheet = spreadsheet.getSheetByName('APP_SESSIONS'); const progressSheet = spreadsheet.getSheetByName('APP_PROGRESS');
+  if (!sessionSheet || !progressSheet) return false;
+  const sessions = rowsAsObjects_(sessionSheet).filter((item) => String(item['Élève ID'] || 'student-owner') === 'student-owner' && date_(item['Date séance']) === sessionDate && !truthy_(item['Supprimée']));
+  if (!sessions.length) return false;
+  const progressRows = rowsAsObjects_(progressSheet); const progressByKey = new Map(progressRows.map((item) => [progressKey_(item['Élève ID'], item['Session ID'], item['Index exercice']), item]));
+  sessions.forEach((session) => {
+    const exercises = parseJson_(session['Exercices JSON'], []);
+    exercises.forEach((exercise, exerciseIndex) => {
+      const key = progressKey_('student-owner', session['Session ID'], exerciseIndex); const existing = progressByKey.get(key);
+      const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {}; const commentTouched = Boolean(fields.commentTouched);
+      progressByKey.set(key, {
+        'Session ID': String(session['Session ID']), 'Date séance': sessionDate, 'Séance': String(session.Nom || ''),
+        'Exercice ID': String(exercise.matchKey || exercise.id || exercise.name || ''), 'Index exercice': exerciseIndex,
+        'Valeurs JSON': existing ? String(existing['Valeurs JSON'] || '[]') : JSON.stringify(exercise.targets || []),
+        'Commentaire élève': commentTouched && existing ? String(existing['Commentaire élève'] || '') : comment,
+        'Modifié le': new Date(), 'Élève ID': 'student-owner',
+        'Champs manuels JSON': JSON.stringify({ manualSets: fields.manualSets || {}, commentTouched: commentTouched }),
+      });
+    });
+  });
+  replaceRows_(progressSheet, [...progressByKey.values()]); touchDataRevision_(); return true;
+}
+
+function monthlyDate_(value, year) {
+  const match = String(value || '').trim().match(/(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s+(\d{1,2})\/(\d{1,2})/i);
+  return match ? String(year) + '-' + String(match[2]).padStart(2, '0') + '-' + String(match[1]).padStart(2, '0') : '';
+}
+
+function normalizeSheetLabel_(value) { return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ''); }
+
 function initializeAppBackend() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   Object.keys(APP_SCHEMA).forEach((name) => ensureTechnicalSheet_(spreadsheet, name, APP_SCHEMA[name]));

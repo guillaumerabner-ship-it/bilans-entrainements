@@ -35,5 +35,7 @@ assert.strictEqual(preservedSession.Nom, 'Nom application');
 assert.strictEqual(preservedSession.Consignes, 'Test Sync');
 assert.strictEqual(context.progressKey_('student-a', 'same-session', 0), 'student-a|same-session|0');
 assert.notStrictEqual(context.progressKey_('student-a', 'same-session', 0), context.progressKey_('student-b', 'same-session', 0));
+assert.strictEqual(context.monthlyDate_('dimanche 23/08', 2026), '2026-08-23');
+assert.strictEqual(context.normalizeSheetLabel_('Infos élève'), 'infoseleve');
 
 console.log('Tests ingestion MOIS vers APP : OK');
