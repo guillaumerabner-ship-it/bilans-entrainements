@@ -8,7 +8,7 @@ const APP_SCHEMA = {
   APP_COACH_STUDENTS: ['Coach ID', 'Élève ID', 'Actif', 'Modifié le'],
 };
 
-const APP_SCHEMA_VERSION = 5;
+const APP_SCHEMA_VERSION = 6;
 const TEST_COACH_EMAIL = 'glogements@gmail.com';
 const GOOGLE_OAUTH_CLIENT_ID = '538510396242-frqqtj211t5deppj6882pueubmvu4s7t.apps.googleusercontent.com';
 
@@ -51,7 +51,7 @@ function doGet(e) {
     const access = authorizeStudent_(e.parameter.credential, e.parameter.studentId);
     const resource = e.parameter.resource || e.parameter.action; const revision = currentDataRevision_();
     const result = resource === 'health'
-      ? { ok: true, source: SpreadsheetApp.getActiveSpreadsheet().getName(), schema: APP_SCHEMA_VERSION, user: access.user.id, studentId: access.studentId, revision: revision }
+      ? { ok: true, source: SpreadsheetApp.getActiveSpreadsheet().getName(), schema: APP_SCHEMA_VERSION, features: ['sheet-calendar-sync'], user: access.user.id, studentId: access.studentId, revision: revision }
       : resource === 'calendar-source'
         ? buildCalendarSource_()
       : (String(e.parameter.revision || '') === revision
@@ -193,7 +193,8 @@ function syncSheetCalendar_(spreadsheet, data) {
 }
 
 function mergeSheetSessionRow_(existing, data) {
-  const manualFields = existing ? parseJson_(existing['Champs modifiés JSON'], []) : [];
+  const parsedManualFields = existing ? parseJson_(existing['Champs modifiés JSON'], []) : [];
+  const manualFields = Array.isArray(parsedManualFields) ? parsedManualFields : [];
   const sheetValues = {
     'Session ID': data.id, 'Date séance': data.date || '', 'Nom': data.name || '', 'Source': 'google-sheet',
     'Repos': Boolean(data.isRest), 'Séance libre': Boolean(data.isFreeSession), 'Consignes': data.instructions || '',
@@ -267,7 +268,13 @@ function upsertByKey_(sheet, keyHeader, key, values) { upsertComposite_(sheet, S
 function upsertByKeyIfNewer_(sheet, keyHeader, key, modifiedAt, values) { return upsertCompositeIfNewer_(sheet, String(key), (row) => String(row[keyHeader]), modifiedAt, values); }
 function upsertCompositeIfNewer_(sheet, key, keyForRow, modifiedAt, values) { const rows = rowsAsObjects_(sheet); const existing = rows.find((row) => keyForRow(row) === key); const incoming = writeDate_(modifiedAt); if (existing && new Date(existing['Modifié le']).getTime() > incoming.getTime()) return false; upsertComposite_(sheet, key, keyForRow, Object.assign({}, values, { 'Modifié le': incoming })); return true; }
 function upsertComposite_(sheet, key, keyForRow, values) { const rows = rowsAsObjects_(sheet); const index = rows.findIndex((row) => keyForRow(row) === key); const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String); const row = headers.map((header) => values[header] === undefined ? '' : values[header]); if (index >= 0) sheet.getRange(index + 2, 1, 1, headers.length).setValues([row]); else sheet.appendRow(row); }
-function replaceRows_(sheet, rows) { const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String); const previousCount = Math.max(0, sheet.getLastRow() - 1); const values = rows.map((row) => headers.map((header) => row[header] === undefined ? '' : row[header])); if (values.length) sheet.getRange(2, 1, values.length, headers.length).setValues(values); if (previousCount > values.length) sheet.getRange(values.length + 2, 1, previousCount - values.length, headers.length).clearContent(); }
+function replaceRows_(sheet, rows) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String); const previousCount = Math.max(0, sheet.getLastRow() - 1);
+  const values = rows.map((row) => headers.map((header) => row[header] === undefined ? '' : row[header]));
+  const requiredRows = values.length + 1; if (sheet.getMaxRows() < requiredRows) sheet.insertRowsAfter(sheet.getMaxRows(), requiredRows - sheet.getMaxRows());
+  for (let index = 0; index < values.length; index += 500) { const batch = values.slice(index, index + 500); sheet.getRange(index + 2, 1, batch.length, headers.length).setValues(batch); }
+  if (previousCount > values.length) sheet.getRange(values.length + 2, 1, previousCount - values.length, headers.length).clearContent();
+}
 function deleteByKey_(sheet, keyHeader, key) { const rows = rowsAsObjects_(sheet); const index = rows.findIndex((row) => String(row[keyHeader]) === String(key)); if (index >= 0) sheet.deleteRow(index + 2); }
 function assertToken_(token) { const expected = PropertiesService.getScriptProperties().getProperty('APP_API_TOKEN'); if (!expected || token !== expected) throw new Error('Accès refusé.'); }
 function parseJson_(value, fallback) { try { return JSON.parse(String(value || '')); } catch (error) { return fallback; } }

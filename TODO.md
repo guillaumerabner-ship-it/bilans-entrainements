@@ -96,6 +96,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Ajouter une révision de données et une synchronisation différentielle fondée sur « Modifié le ».
 - [x] Conserver l’actualisation du Google Sheet toutes les quinze minutes sans bloquer l’interface.
 - [x] Alimenter `APP_SESSIONS` et `APP_PROGRESS` par lots après la lecture des onglets mensuels, en préservant les champs explicitement saisis dans l’application et en isolant les lignes par élève.
+- [x] Fiabiliser cette ingestion lorsque `APP_PROGRESS` dépasse sa taille initiale, écrire par lots de 500 lignes et afficher clairement les erreurs ou une ancienne version du service Apps Script.
 - [ ] Paginer ou filtrer les données téléchargées lorsque l’historique couvrira plusieurs années.
 - [ ] Optimiser les recherches et écritures Apps Script pour éviter les parcours ligne par ligne sur une base volumineuse.
 - [ ] Surveiller le poids des historiques de progression, vidéos et séances lors des futurs tests de charge.

@@ -223,7 +223,7 @@ async function flushSharedOutbox() {
       const latest = readStore(SHARED_OUTBOX_KEY, []); localStorage.setItem(SHARED_OUTBOX_KEY, JSON.stringify(latest.filter((entry) => entry.id !== item.id)));
     }
     localStorage.setItem('shared-backend-last-sync', new Date().toISOString()); setSharedStatus('À jour', 'ok');
-  } catch (error) { console.warn('Synchronisation partagée en attente', error); setSharedStatus('Hors ligne · en attente', 'error'); }
+  } catch (error) { console.warn('Synchronisation partagée en attente', error); setSharedStatus(`En attente · ${error.message}`, 'error'); const calendarStatus = document.querySelector('#sync-status'); if (calendarStatus) calendarStatus.textContent = `Onglets mensuels lus · mise à jour APP en attente (${error.message})`; }
   finally { sharedSyncRunning = false; if (conflictDetected) loadSharedSnapshot(true); }
 }
 async function sharedProxyWrite(item) { const config = sharedBackendConfig(); const response = await fetch('/api/shared', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: config.token, credential: currentGoogleCredential(), studentId: item.studentId || activeStudentId, action: item.action, data: item.data }) }); if (!response.ok) throw new Error(`Relais local HTTP ${response.status}.`); return response.json(); }
@@ -344,7 +344,11 @@ document.querySelector('#test-shared-api').addEventListener('click', () => {
   const shared = { url: document.querySelector('#shared-api-url').value.trim().replace(/\/$/, ''), token: document.querySelector('#shared-api-token').value.trim() };
   localStorage.setItem(SHARED_CONFIG_KEY, JSON.stringify(shared));
   if (!sharedBackendReady()) { setSharedStatus('Adresse ou clé incomplète', 'error'); return; }
-  setSharedStatus('Test…', 'busy'); sharedJsonp('health', (response) => setSharedStatus(response?.ok ? 'Connexion réussie' : response?.error || 'Échec', response?.ok ? 'ok' : 'error'));
+  setSharedStatus('Test…', 'busy'); sharedJsonp('health', (response) => {
+    if (!response?.ok) { setSharedStatus(response?.error || 'Échec', 'error'); return; }
+    const ready = Number(response.schema) >= 6 && (response.features || []).includes('sheet-calendar-sync');
+    setSharedStatus(ready ? 'Connexion réussie · service v6' : `Service à redéployer · v${response.schema || '?'}`, ready ? 'ok' : 'error');
+  });
 });
 document.querySelector('#reset-appearance').addEventListener('click', () => {
   localStorage.removeItem('app-appearance'); applyAppearance(defaultAppearance); document.querySelector('[name="theme"][value="noir-rouge"]').checked = true; document.querySelector('#accent-color').value = defaultAppearance.accent; document.querySelector('#accent-code').textContent = defaultAppearance.accent.toUpperCase();
