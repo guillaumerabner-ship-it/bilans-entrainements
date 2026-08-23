@@ -8,7 +8,7 @@ const APP_SCHEMA = {
   APP_COACH_STUDENTS: ['Coach ID', 'Élève ID', 'Actif', 'Modifié le'],
 };
 
-const APP_SCHEMA_VERSION = 6;
+const APP_SCHEMA_VERSION = 7;
 const TEST_COACH_EMAIL = 'glogements@gmail.com';
 const GOOGLE_OAUTH_CLIENT_ID = '538510396242-frqqtj211t5deppj6882pueubmvu4s7t.apps.googleusercontent.com';
 
@@ -113,6 +113,18 @@ function monthlyExercisesForBlock_(sheet, anchorColumn, dateRowNumber, infoRowNu
   return exercises;
 }
 
+function monthlyExerciseRowsForBlock_(sheet, block) {
+  const endRow = (block.coachInfoRow || block.studentInfoRow) - 1;
+  if (endRow < block.dateRow + 2) return [];
+  const values = sheet.getRange(block.dateRow + 2, block.anchorColumn, endRow - block.dateRow - 1, 1).getDisplayValues(); const rows = [];
+  values.forEach((item, index) => {
+    const name = String(item[0] || '').trim(); const label = normalizeSheetLabel_(name);
+    if (!name || !Number.isNaN(Number(name)) || label === 'gtg' || label.startsWith('infoscoach') || label.startsWith('infocoach') || label.startsWith('infoseleve') || label.startsWith('infoeleve')) return;
+    rows.push(block.dateRow + 2 + index);
+  });
+  return rows;
+}
+
 function monthlyInfoText_(row, labelColumn) {
   const parts = [];
   for (let index = labelColumn; index < Math.min(row.length, labelColumn + 12); index += 1) {
@@ -123,10 +135,119 @@ function monthlyInfoText_(row, labelColumn) {
   return parts.join(' ').trim();
 }
 
+function monthlyBlocksForDate_(sheet, targetDate, sessionName) {
+  if (!sheet || !targetDate) return [];
+  const rows = sheet.getDataRange().getDisplayValues();
+  const year = Number(String(sheet.getName()).match(/\b20\d{2}\b/)?.[0]) || Number(String(targetDate).slice(0, 4));
+  const expectedName = normalizeSheetLabel_(sessionName); const blocks = [];
+  rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
+    if (monthlyDate_(value, year) !== targetDate) return;
+    let coachInfoRow = 0; let studentInfoRow = 0;
+    for (let nextRow = rowIndex + 1; nextRow < Math.min(rows.length, rowIndex + 45); nextRow += 1) {
+      const label = normalizeSheetLabel_(rows[nextRow][columnIndex]);
+      if (monthlyDate_(rows[nextRow][columnIndex], year)) break;
+      if (!coachInfoRow && (label.startsWith('infoscoach') || label.startsWith('infocoach'))) coachInfoRow = nextRow + 1;
+      if (label.startsWith('infoseleve') || label.startsWith('infoeleve')) { studentInfoRow = nextRow + 1; break; }
+    }
+    if (!studentInfoRow) return;
+    const displayedName = String((rows[rowIndex + 1] || [])[columnIndex] || '');
+    blocks.push({ dateRow: rowIndex + 1, anchorColumn: columnIndex + 1, coachInfoRow, studentInfoRow, displayedName, nameMatches: Boolean(expectedName && normalizeSheetLabel_(displayedName) === expectedName) });
+  }));
+  if (expectedName && blocks.some((block) => block.nameMatches)) return blocks.filter((block) => block.nameMatches);
+  return expectedName && blocks.length > 1 ? [] : blocks;
+}
+
+function monthlySheetsForDate_(spreadsheet, targetDate) {
+  const indexSheet = spreadsheet.getSheetByName('INDEX'); if (!indexSheet) return [];
+  return indexSheet.getDataRange().getDisplayValues().slice(1).map((row) => String(row[0] || '').trim()).filter(Boolean).map((name) => spreadsheet.getSheetByName(name)).filter(Boolean);
+}
+
+function mergedWriteRange_(sheet, row, column) {
+  const cell = sheet.getRange(row, column); const merged = cell.getMergedRanges(); return merged.length ? merged[0] : cell;
+}
+
+function monthlyContentStartColumn_(sheet, row, labelColumn) {
+  const labelRange = mergedWriteRange_(sheet, row, labelColumn);
+  return Math.max(labelColumn + 1, labelRange.getLastColumn() + 1);
+}
+
+function clearMonthlyCells_(sheet, rowStart, rowEnd, columnStart, columnEnd) {
+  const cleared = new Set();
+  for (let row = rowStart; row <= rowEnd; row += 1) for (let column = columnStart; column <= columnEnd; column += 1) {
+    const range = mergedWriteRange_(sheet, row, column); const key = range.getA1Notation();
+    if (!cleared.has(key)) { range.clearContent(); cleared.add(key); }
+  }
+}
+
+function syncProgressToMonthly_(spreadsheet, data) {
+  if (String(data.studentId || 'student-owner') !== 'student-owner' || !data.date) return false;
+  const manualSets = data.manualSets || {}; const shouldWriteComment = Boolean(data.commentTouched);
+  if (!shouldWriteComment && !Object.keys(manualSets).some((key) => truthy_(manualSets[key]))) return false;
+  let writes = 0;
+  monthlySheetsForDate_(spreadsheet, data.date).forEach((sheet) => monthlyBlocksForDate_(sheet, data.date, data.sessionName).forEach((block) => {
+    if (shouldWriteComment) {
+      const displayRow = sheet.getRange(block.studentInfoRow, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+      const contentStartColumn = monthlyContentStartColumn_(sheet, block.studentInfoRow, block.anchorColumn);
+      let endColumn = Math.min(sheet.getLastColumn(), block.anchorColumn + 11);
+      for (let column = contentStartColumn; column <= endColumn; column += 1) {
+        const label = normalizeSheetLabel_(displayRow[column - 1]);
+        if (label.startsWith('infoscoach') || label.startsWith('infocoach') || label.startsWith('infoseleve') || label.startsWith('infoeleve')) { endColumn = column - 1; break; }
+      }
+      if (endColumn >= contentStartColumn) {
+        clearMonthlyCells_(sheet, block.studentInfoRow, block.studentInfoRow, contentStartColumn, endColumn);
+        mergedWriteRange_(sheet, block.studentInfoRow, contentStartColumn).setValue(String(data.comment || '')); writes += 1;
+      }
+    }
+    const exerciseIndex = Number(data.exerciseIndex); const exerciseRow = monthlyExerciseRowsForBlock_(sheet, block)[exerciseIndex]; const values = Array.isArray(data.values) ? data.values : [];
+    Object.keys(manualSets).forEach((setIndex) => {
+      if (!truthy_(manualSets[setIndex]) || !exerciseRow) return;
+      const column = block.anchorColumn + Number(setIndex); if (!Number.isFinite(column) || column > sheet.getLastColumn()) return;
+      mergedWriteRange_(sheet, exerciseRow + 1, column).setValue(values[Number(setIndex)] === undefined ? '' : values[Number(setIndex)]); writes += 1;
+    });
+  }));
+  recordAppMonthlySyncStatus_(spreadsheet, writes ? 'OK : progression ' + data.date + ' → ' + writes + ' écriture(s)' : 'IGNORÉ : bloc mensuel introuvable pour la progression du ' + data.date);
+  return writes > 0;
+}
+
+function syncSessionToMonthly_(spreadsheet, data, deleted) {
+  if (String(data.studentId || 'student-owner') !== 'student-owner' || !data.date) return false;
+  let writes = 0;
+  monthlySheetsForDate_(spreadsheet, data.date).forEach((sheet) => monthlyBlocksForDate_(sheet, data.date, data.name).forEach((block) => {
+    if (deleted) {
+      const contentEndRow = (block.coachInfoRow || block.studentInfoRow) - 1;
+      clearMonthlyCells_(sheet, block.dateRow + 1, contentEndRow, block.anchorColumn, Math.min(sheet.getLastColumn(), block.anchorColumn + 9));
+      if (block.coachInfoRow) clearMonthlyCells_(sheet, block.coachInfoRow, block.coachInfoRow, monthlyContentStartColumn_(sheet, block.coachInfoRow, block.anchorColumn), Math.min(sheet.getLastColumn(), block.anchorColumn + 9));
+      clearMonthlyCells_(sheet, block.studentInfoRow, block.studentInfoRow, monthlyContentStartColumn_(sheet, block.studentInfoRow, block.anchorColumn), Math.min(sheet.getLastColumn(), block.anchorColumn + 9)); writes += 1; return;
+    }
+    const fields = Array.isArray(data.overrideFields) ? data.overrideFields : null;
+    const writesField = (field) => !fields || fields.includes(field);
+    if (writesField('name')) { mergedWriteRange_(sheet, block.dateRow + 1, block.anchorColumn).setValue(String(data.name || '')); writes += 1; }
+    if (writesField('instructions') && block.coachInfoRow) { mergedWriteRange_(sheet, block.coachInfoRow, monthlyContentStartColumn_(sheet, block.coachInfoRow, block.anchorColumn)).setValue(String(data.instructions || '')); writes += 1; }
+    if (writesField('exercises')) {
+      const lastExerciseRow = (block.coachInfoRow || block.studentInfoRow) - 1;
+      clearMonthlyCells_(sheet, block.dateRow + 2, lastExerciseRow, block.anchorColumn, Math.min(sheet.getLastColumn(), block.anchorColumn + 9));
+      (data.exercises || []).forEach((exercise, exerciseIndex) => {
+        const item = typeof exercise === 'string' ? { name: exercise, targets: [] } : exercise; const row = block.dateRow + 2 + (exerciseIndex * 2);
+        if (row > lastExerciseRow) return;
+        mergedWriteRange_(sheet, row, block.anchorColumn).setValue(String(item.name || ''));
+        (item.targets || []).slice(0, 10).forEach((value, setIndex) => mergedWriteRange_(sheet, row + 1, block.anchorColumn + setIndex).setValue(value)); writes += 1;
+      });
+    }
+  }));
+  recordAppMonthlySyncStatus_(spreadsheet, writes ? 'OK : séance ' + data.date + (deleted ? ' supprimée' : ' mise à jour') : 'IGNORÉ : bloc mensuel introuvable pour la séance du ' + data.date);
+  return writes > 0;
+}
+
 function recordMonthlySyncStatus_(spreadsheet, message) {
   if (!spreadsheet) return;
   const settings = spreadsheet.getSheetByName('APP_SETTINGS'); if (!settings) return;
   upsertByKey_(settings, 'Clé', 'LAST_MONTHLY_EDIT_SYNC', { 'Clé': 'LAST_MONTHLY_EDIT_SYNC', 'Valeur': message, 'Modifié le': new Date() });
+}
+
+function recordAppMonthlySyncStatus_(spreadsheet, message) {
+  if (!spreadsheet) return;
+  const settings = spreadsheet.getSheetByName('APP_SETTINGS'); if (!settings) return;
+  upsertByKey_(settings, 'Clé', 'LAST_APP_TO_MONTH_SYNC', { 'Clé': 'LAST_APP_TO_MONTH_SYNC', 'Valeur': message, 'Modifié le': new Date() });
 }
 
 function monthlyDate_(value, year) {
@@ -171,7 +292,7 @@ function doGet(e) {
     const access = authorizeStudent_(e.parameter.credential, e.parameter.studentId);
     const resource = e.parameter.resource || e.parameter.action; const revision = currentDataRevision_();
     const result = resource === 'health'
-      ? { ok: true, source: SpreadsheetApp.getActiveSpreadsheet().getName(), schema: APP_SCHEMA_VERSION, features: ['sheet-calendar-sync'], user: access.user.id, studentId: access.studentId, revision: revision }
+      ? { ok: true, source: SpreadsheetApp.getActiveSpreadsheet().getName(), schema: APP_SCHEMA_VERSION, features: ['sheet-calendar-sync', 'monthly-writeback'], user: access.user.id, studentId: access.studentId, revision: revision }
       : resource === 'calendar-source'
         ? buildCalendarSource_()
       : (String(e.parameter.revision || '') === revision
@@ -254,10 +375,11 @@ function authorizeStudent_(credential, requestedStudentId) {
 function upsertProgress_(spreadsheet, data) {
   if (!data.sessionId || data.exerciseIndex === undefined) throw new Error('Séance ou index exercice manquant.');
   const key = progressKey_(data.studentId, data.sessionId, data.exerciseIndex); const sheet = spreadsheet.getSheetByName('APP_PROGRESS');
-  return upsertCompositeIfNewer_(sheet, key, (row) => progressKey_(row['Élève ID'], row['Session ID'], row['Index exercice']), data.modifiedAt, {
+  const changed = upsertCompositeIfNewer_(sheet, key, (row) => progressKey_(row['Élève ID'], row['Session ID'], row['Index exercice']), data.modifiedAt, {
     'Session ID': data.sessionId, 'Date séance': data.date || '', 'Séance': data.sessionName || '', 'Exercice ID': data.exerciseKey || '',
     'Index exercice': Number(data.exerciseIndex), 'Valeurs JSON': JSON.stringify(data.values || []), 'Commentaire élève': data.comment || '', 'Modifié le': writeDate_(data.modifiedAt), 'Élève ID': data.studentId || 'student-owner', 'Champs manuels JSON': JSON.stringify({ manualSets: data.manualSets || {}, commentTouched: Boolean(data.commentTouched) }),
   });
+  if (changed) syncProgressToMonthly_(spreadsheet, data); return changed;
 }
 
 function upsertVideo_(spreadsheet, data) {
@@ -279,11 +401,12 @@ function upsertExercise_(spreadsheet, data) {
 function upsertSession_(spreadsheet, data, deleted) {
   if (!data.id) throw new Error('Identifiant de séance manquant.');
   const sheet = spreadsheet.getSheetByName('APP_SESSIONS'); const key = sessionKey_(data.studentId, data.id);
-  return upsertCompositeIfNewer_(sheet, key, (row) => sessionKey_(row['Élève ID'], row['Session ID']), data.modifiedAt, {
+  const changed = upsertCompositeIfNewer_(sheet, key, (row) => sessionKey_(row['Élève ID'], row['Session ID']), data.modifiedAt, {
     'Session ID': data.id, 'Date séance': data.date || '', 'Nom': data.name || '', 'Source': data.source || 'manual',
     'Repos': Boolean(data.isRest), 'Séance libre': Boolean(data.isFreeSession), 'Consignes': data.instructions || '',
     'Exercices JSON': JSON.stringify(data.exercises || []), 'Supprimée': Boolean(deleted), 'Modifié le': writeDate_(data.modifiedAt), 'Élève ID': data.studentId || 'student-owner', 'Champs modifiés JSON': JSON.stringify(data.overrideFields || []),
   });
+  if (changed) syncSessionToMonthly_(spreadsheet, data, deleted); return changed;
 }
 
 function syncSheetCalendar_(spreadsheet, data) {

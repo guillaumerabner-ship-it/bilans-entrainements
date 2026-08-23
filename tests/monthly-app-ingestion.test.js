@@ -50,4 +50,19 @@ assert.deepStrictEqual(JSON.parse(JSON.stringify(context.monthlyExercisesForBloc
 ]);
 assert.strictEqual(context.monthlyInfoText_(['Infos élève', 'Test App 2', '', '', 'Infos élève', ''], 1), 'Test App 2');
 
+const blockRows = [
+  ['dimanche 23/08', '', 'dimanche 23/08'],
+  ['Push', '', 'Pull'],
+  ['Dips', '', 'Tractions'],
+  ['8', '', '6'],
+  ['Infos coach', '', 'Infos coach'],
+  ['', '', ''],
+  ['Infos élève', '', 'Infos élève'],
+];
+const fakeBlockSheet = { getName: () => 'Août 2026', getDataRange: () => ({ getDisplayValues: () => blockRows }) };
+assert.deepStrictEqual(JSON.parse(JSON.stringify(context.monthlyBlocksForDate_(fakeBlockSheet, '2026-08-23', 'Push'))), [{ dateRow: 1, anchorColumn: 1, coachInfoRow: 5, studentInfoRow: 7, displayedName: 'Push', nameMatches: true }]);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(context.monthlyBlocksForDate_(fakeBlockSheet, '2026-08-23', 'Nom inconnu'))), []);
+const exerciseRowSheet = { getRange: () => ({ getDisplayValues: () => [['Dips'], ['8'], ['GTG'], ['Tractions'], ['6']] }) };
+assert.deepStrictEqual(JSON.parse(JSON.stringify(context.monthlyExerciseRowsForBlock_(exerciseRowSheet, { dateRow: 1, anchorColumn: 1, coachInfoRow: 8, studentInfoRow: 10 }))), [3, 6]);
+
 console.log('Tests ingestion MOIS vers APP : OK');

@@ -128,6 +128,9 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Faire de la commande manuelle « Synchroniser la cellule sélectionnée » une reprise forcée depuis l’onglet mensuel, afin de pouvoir retirer un ancien marqueur `commentTouched` qui bloquait volontairement la valeur du tableau.
 - [x] Remplacer l’écriture groupée ambiguë du test mensuel par des écritures directes sur les lignes `APP_PROGRESS`, puis relire immédiatement les cellules et consigner leurs numéros dans `LAST_MONTHLY_EDIT_SYNC`.
 - [x] Limiter la lecture de « Infos élève » au bloc hebdomadaire courant afin de ne pas concaténer le libellé du bloc suivant au commentaire.
+- [x] Répercuter les commentaires et séries saisis dans l’application vers le bloc correspondant des onglets mensuels, y compris lorsqu’un commentaire est volontairement vidé.
+- [x] Répercuter les créations, modifications et suppressions de séances de l’application vers les onglets mensuels sans supprimer la date ni la mise en forme du bloc.
+- [x] Consigner le dernier retour application → mois dans `LAST_APP_TO_MONTH_SYNC` et annoncer la capacité `monthly-writeback` dans le contrôle de santé.
 - [x] Calculer automatiquement la date affichée dans l’en-tête et restaurer un accès Paramètres persistant dans l’en-tête mobile.
 - [ ] Paginer ou filtrer les données téléchargées lorsque l’historique couvrira plusieurs années.
 - [ ] Optimiser les recherches et écritures Apps Script pour éviter les parcours ligne par ligne sur une base volumineuse.
