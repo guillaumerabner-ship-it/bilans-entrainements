@@ -1025,7 +1025,11 @@ function syncGoogleSheet() {
     delete document.body.dataset.sheetSync; if (syncButton) syncButton.disabled = false;
   }, { refresh: Date.now() });
 }
-document.querySelector('[data-sync-sheets]').addEventListener('click', () => { localStorage.removeItem('sheet-last-sync'); syncGoogleSheet(); });
+document.querySelector('[data-sync-sheets]').addEventListener('click', async () => {
+  localStorage.removeItem('sheet-last-sync');
+  if (sharedBackendReady()) { await flushSharedOutbox(); loadSharedSnapshot(true); }
+  syncGoogleSheet();
+});
 
 function progressFor(sessionId) { const all = readStore('workout-progress', {}); return { all, current: all[sessionId] || { values: {}, comment: '' } }; }
 function selectOptions(target, metric, selected) {
@@ -1151,7 +1155,7 @@ document.querySelector('#workout-content').addEventListener('input', (event) => 
   if (event.target.id === 'rest-steps') { const session = getSessions().find((item) => item.id === sessionId); const steps = readStore('daily-steps', {}); if (event.target.value) steps[session.date] = Number(event.target.value); else delete steps[session.date]; localStorage.setItem('daily-steps', JSON.stringify(steps)); renderCalendar(); return; }
   if (event.target.matches('[data-progress-exercise]')) { const exercise = event.target.dataset.progressExercise; const set = event.target.dataset.progressSet; current.values[exercise] ||= []; current.values[exercise][set] = Number(event.target.value); current.manualSets ||= {}; current.manualSets[exercise] ||= {}; current.manualSets[exercise][set] = true; }
   if (event.target.id === 'student-comment') { current.comment = event.target.value; current.commentTouched = true; }
-  current.modifiedAt = new Date().toISOString(); all[sessionId] = current; localStorage.setItem('workout-progress', JSON.stringify(all)); scheduleSharedProgress(getSessions().find((item) => item.id === sessionId), current); renderCalendar(); renderDashboard(); document.querySelector('#save-hint').textContent = `Enregistré à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  current.modifiedAt = new Date().toISOString(); all[sessionId] = current; localStorage.setItem('workout-progress', JSON.stringify(all)); scheduleSharedProgress(getSessions().find((item) => item.id === sessionId), current); renderCalendar(); renderDashboard(); document.querySelector('#save-hint').textContent = `Enregistré à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}${sharedBackendReady() ? ' · envoi Google en arrière-plan' : ''}`;
 });
 
 const metricNames = { repetitions: 'Répétitions totales', tension: 'Temps sous tension', weight: 'Charge utilisée' };

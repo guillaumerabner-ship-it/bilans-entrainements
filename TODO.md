@@ -89,6 +89,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 ## Performances
 
 - [x] Afficher immédiatement les données locales et restaurer l’interface avant la vérification Google en arrière-plan.
+- [x] Faire en sorte que « Actualiser les données » envoie la file locale puis recharge aussi les données techniques partagées avant d’actualiser les onglets mensuels.
 - [x] Regrouper les demandes de snapshot concurrentes avec un délai anti-doublon d’une minute.
 - [x] Mettre en cache la vérification du jeton Google pendant cinq minutes côté Apps Script.
 - [x] Ajouter une révision de données et une synchronisation différentielle fondée sur « Modifié le ».
