@@ -99,6 +99,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Fiabiliser cette ingestion lorsque `APP_PROGRESS` dépasse sa taille initiale, écrire par lots de 500 lignes et afficher clairement les erreurs ou une ancienne version du service Apps Script.
 - [x] Ajouter un déclencheur `onEdit` lié au classeur : une saisie dans « Infos élève » d’un onglet mensuel crée ou actualise immédiatement les lignes correspondantes dans `APP_PROGRESS`, sans dépendre de l’ouverture de l’application.
 - [x] Rendre ce déclencheur installable et diagnosticable depuis le menu du classeur, avec une synchronisation manuelle de la cellule sélectionnée et un statut `LAST_MONTHLY_EDIT_SYNC` dans `APP_SETTINGS`.
+- [x] Faire lire au déclencheur les exercices directement dans le bloc mensuel lorsque les lignes `APP_PROGRESS` n’existent pas encore, et compter explicitement les lignes écrites dans le diagnostic.
 - [ ] Paginer ou filtrer les données téléchargées lorsque l’historique couvrira plusieurs années.
 - [ ] Optimiser les recherches et écritures Apps Script pour éviter les parcours ligne par ligne sur une base volumineuse.
 - [ ] Surveiller le poids des historiques de progression, vidéos et séances lors des futurs tests de charge.

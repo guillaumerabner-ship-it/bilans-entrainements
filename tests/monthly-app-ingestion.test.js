@@ -37,5 +37,16 @@ assert.strictEqual(context.progressKey_('student-a', 'same-session', 0), 'studen
 assert.notStrictEqual(context.progressKey_('student-a', 'same-session', 0), context.progressKey_('student-b', 'same-session', 0));
 assert.strictEqual(context.monthlyDate_('dimanche 23/08', 2026), '2026-08-23');
 assert.strictEqual(context.normalizeSheetLabel_('Infos élève'), 'infoseleve');
+const monthlyRows = [
+  ['OL FL', '', '', '', '', '', '', '', '', ''],
+  ['8', '7', '6', '', '', '', '', '', '', ''],
+  ['FL tuck raises', '', '', '', '', '', '', '', '', ''],
+  ['5', '4', '4', '', '', '', '', '', '', ''],
+];
+const fakeMonthlySheet = { getRange: () => ({ getDisplayValues: () => monthlyRows }) };
+assert.deepStrictEqual(JSON.parse(JSON.stringify(context.monthlyExercisesForBlock_(fakeMonthlySheet, 29, 117, 123))), [
+  { name: 'OL FL', targets: [8, 7, 6] },
+  { name: 'FL tuck raises', targets: [5, 4, 4] },
+]);
 
 console.log('Tests ingestion MOIS vers APP : OK');

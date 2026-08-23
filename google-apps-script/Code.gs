@@ -61,17 +61,19 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
   if (labelColumn < 1) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : libellé Infos élève introuvable près de ' + monthlySheet.getName() + '!' + editedRange.getA1Notation()); return false; }
   const year = Number(String(monthlySheet.getName()).match(/\b20\d{2}\b/)?.[0]) || new Date().getFullYear();
   const firstRow = Math.max(1, rowNumber - 40); const above = monthlySheet.getRange(firstRow, labelColumn, rowNumber - firstRow + 1, 1).getDisplayValues();
-  let sessionDate = '';
-  for (let index = above.length - 1; index >= 0; index -= 1) { sessionDate = monthlyDate_(above[index][0], year); if (sessionDate) break; }
+  let sessionDate = ''; let dateRowNumber = 0;
+  for (let index = above.length - 1; index >= 0; index -= 1) { sessionDate = monthlyDate_(above[index][0], year); if (sessionDate) { dateRowNumber = firstRow + index; break; } }
   if (!sessionDate) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : date de séance introuvable au-dessus de ' + editedRange.getA1Notation()); return false; }
   const comment = row.slice(labelColumn).map((cell) => String(cell || '').trim()).filter(Boolean).join(' ').trim();
   const sessionSheet = spreadsheet.getSheetByName('APP_SESSIONS'); const progressSheet = spreadsheet.getSheetByName('APP_PROGRESS');
   if (!sessionSheet || !progressSheet) { recordMonthlySyncStatus_(spreadsheet, 'ERREUR : APP_SESSIONS ou APP_PROGRESS introuvable'); return false; }
   const sessions = rowsAsObjects_(sessionSheet).filter((item) => String(item['Élève ID'] || 'student-owner') === 'student-owner' && date_(item['Date séance']) === sessionDate && !truthy_(item['Supprimée']));
   if (!sessions.length) { recordMonthlySyncStatus_(spreadsheet, 'IGNORÉ : aucune séance APP_SESSIONS trouvée pour ' + sessionDate); return false; }
+  const monthlyExercises = monthlyExercisesForBlock_(monthlySheet, labelColumn, dateRowNumber, rowNumber);
   const progressRows = rowsAsObjects_(progressSheet); const progressByKey = new Map(progressRows.map((item) => [progressKey_(item['Élève ID'], item['Session ID'], item['Index exercice']), item]));
+  let writtenRows = 0;
   sessions.forEach((session) => {
-    const exercises = parseJson_(session['Exercices JSON'], []);
+    const storedExercises = parseJson_(session['Exercices JSON'], []); const exercises = monthlyExercises.length ? monthlyExercises : storedExercises;
     exercises.forEach((exercise, exerciseIndex) => {
       const key = progressKey_('student-owner', session['Session ID'], exerciseIndex); const existing = progressByKey.get(key);
       const fields = existing ? parseJson_(existing['Champs manuels JSON'], {}) : {}; const commentTouched = Boolean(fields.commentTouched);
@@ -83,10 +85,25 @@ function syncMonthlyStudentInfoEdit_(spreadsheet, monthlySheet, editedRange) {
         'Modifié le': new Date(), 'Élève ID': 'student-owner',
         'Champs manuels JSON': JSON.stringify({ manualSets: fields.manualSets || {}, commentTouched: commentTouched }),
       });
+      writtenRows += 1;
     });
   });
+  if (!writtenRows) { recordMonthlySyncStatus_(spreadsheet, 'ERREUR : ' + sessionDate + ' trouvé, mais aucun exercice détecté dans le bloc mensuel ni dans APP_SESSIONS'); return false; }
   replaceRows_(progressSheet, [...progressByKey.values()]); touchDataRevision_();
-  recordMonthlySyncStatus_(spreadsheet, 'OK : ' + sessionDate + ' → ' + sessions.length + ' séance(s), commentaire « ' + comment + ' »'); return true;
+  recordMonthlySyncStatus_(spreadsheet, 'OK : ' + sessionDate + ' → ' + writtenRows + ' ligne(s) APP_PROGRESS, commentaire « ' + comment + ' »'); return true;
+}
+
+function monthlyExercisesForBlock_(sheet, anchorColumn, dateRowNumber, infoRowNumber) {
+  if (!dateRowNumber || infoRowNumber <= dateRowNumber + 1) return [];
+  const height = infoRowNumber - dateRowNumber - 2; if (height <= 0) return [];
+  const rows = sheet.getRange(dateRowNumber + 2, anchorColumn, height, 10).getDisplayValues(); const exercises = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const name = String(rows[index][0] || '').trim(); const normalized = normalizeSheetLabel_(name);
+    if (!name || !Number.isNaN(Number(name)) || normalized === 'gtg' || normalized.startsWith('infoscoach') || normalized.startsWith('infoseleve') || normalized.startsWith('infoeleve')) continue;
+    const targets = (rows[index + 1] || []).map((value) => Number(String(value || '').replace(',', '.'))).filter((value) => Number.isFinite(value) && value > 0);
+    exercises.push({ name: name, targets: targets });
+  }
+  return exercises;
 }
 
 function recordMonthlySyncStatus_(spreadsheet, message) {
