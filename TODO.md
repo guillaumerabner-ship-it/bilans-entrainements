@@ -11,9 +11,9 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Valider en conditions réelles l’ingestion du commentaire élève depuis un onglet mensuel vers `APP_PROGRESS` : « Test App 2 Infos élève » du 23 août 2026 a été écrit puis relu dans les lignes 9, 10 et 11. La consigne coach « Test Sync » reste également validée.
 - [x] Corriger les anciennes lignes `APP_SESSIONS` sans liste de champs modifiés afin qu’une consigne vide historique ne masque plus la valeur actuelle de « Infos coach » dans les onglets mensuels.
 - [x] Optimiser le bouton « Actualiser les données » : charger au maximum deux onglets mensuels simultanément et ne calculer la liste des séances qu’une fois par rendu du calendrier.
-- [ ] **PRIORITÉ HAUTE — Activer le bouton « Voir tout » du journal** et créer une page dédiée à l’historique complet des séances.
-- [ ] Sur cette page, distinguer clairement les séances terminées, partielles, commencées, manquées et les jours de repos validés.
-- [ ] Ajouter une vue de la régularité dans le temps afin d’identifier facilement les périodes suivies, les interruptions et les séances loupées.
+- [x] **PRIORITÉ HAUTE — Activer le bouton « Voir tout » du journal** et créer une page dédiée à l’historique complet des séances.
+- [x] Sur cette page, distinguer clairement les séances terminées, partielles, commencées, manquées et les jours de repos validés.
+- [x] Ajouter une vue de la régularité dans le temps afin d’identifier facilement les périodes suivies, les interruptions et les séances loupées.
 - [x] **PRIORITÉ HAUTE — Simplifier la section « Mes exercices » de la page d’accueil** : l’accueil affiche désormais quatre exercices récemment travaillés.
 - [x] Créer une page dédiée à la bibliothèque complète, avec recherche et filtres par famille et métrique.
 - [x] Conserver sur la page dédiée les actions progression, vidéos, modification, archivage et création.

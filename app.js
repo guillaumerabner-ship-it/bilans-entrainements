@@ -4,6 +4,7 @@ const exerciseForm = document.querySelector('#exercise-form');
 const exerciseList = document.querySelector('#exercise-list');
 const exercisePreview = document.querySelector('#exercise-preview');
 const exerciseLibrary = document.querySelector('#exercise-library');
+const allSessionsPage = document.querySelector('#all-sessions');
 const importDialog = document.querySelector('#import-dialog');
 const importForm = document.querySelector('#import-form');
 const calendarGrid = document.querySelector('#calendar-grid');
@@ -100,7 +101,7 @@ document.addEventListener('click', (event) => { if (event.target.closest('[data-
 document.body.insertAdjacentHTML('beforeend', '<dialog id="video-registry-dialog"><div class="form-card video-registry-card"><button class="close" type="button" data-close-video-registry aria-label="Fermer">×</button><div id="video-registry-content"></div></div></dialog>');
 const videoRegistryDialog = document.querySelector('#video-registry-dialog');
 document.querySelector('.nav-link[href="#exercise-library"]').insertAdjacentHTML('afterend', '<a class="nav-link" href="#videos"><span class="nav-icon">▶</span>Vidéos</a>');
-document.querySelectorAll('.nav-link').forEach((link) => link.addEventListener('click', () => { if (link.getAttribute('href') !== '#exercise-library' && document.body.classList.contains('exercise-library-open')) setExerciseLibraryOpen(false, false); document.querySelectorAll('.nav-link').forEach((item) => item.classList.toggle('active', item === link)); }));
+document.querySelectorAll('.nav-link').forEach((link) => link.addEventListener('click', () => { if (link.getAttribute('href') !== '#exercise-library' && document.body.classList.contains('exercise-library-open')) setExerciseLibraryOpen(false, false); if (document.body.classList.contains('all-sessions-open')) setAllSessionsOpen(false, false); document.querySelectorAll('.nav-link').forEach((item) => item.classList.toggle('active', item === link)); }));
 document.querySelector('#exercises').insertAdjacentHTML('beforebegin', '<section id="videos" class="panel video-library-panel"><div class="panel-heading"><div><p class="kicker">REVUE DU COACH</p><h2>Bibliothèque vidéo</h2><p class="panel-subtitle">Vidéos organisées par famille, exercice et date.</p></div><span class="video-library-count" id="video-library-count">0 vidéo</span></div><div class="video-recent-heading"><span>VIDÉOS RÉCENTES</span><small>De la plus récente à la plus ancienne</small></div><div id="video-recent-strip" class="video-recent-strip"></div><div class="video-library-toolbar"><strong>Classement de la bibliothèque</strong><div><button class="active" type="button" data-video-library-mode="exercise">Par exercice</button><button type="button" data-video-library-mode="date">Par date</button></div></div><div id="video-library-tree" class="video-library-tree"></div></section>');
 let videoLibraryMode = 'exercise';
 const LEGACY_SHEET_ID = '1vj_EQzZqVN7pKhB2eBFh1Rjn8u_aQ53mQosZLTRTT-Q';
@@ -431,6 +432,7 @@ function renderExercisePreview(exercises) {
 }
 
 function setExerciseLibraryOpen(open, updateHash = true) {
+  if (open) setAllSessionsOpen(false, false);
   exerciseLibrary.hidden = !open;
   document.body.classList.toggle('exercise-library-open', open);
   if (open) { renderExercises(); window.scrollTo({ top: 0, behavior: 'auto' }); }
@@ -447,6 +449,66 @@ document.querySelectorAll('#exercise-library-search, #exercise-family-filter, #e
   clearTimeout(exerciseSearchTimer); exerciseSearchTimer = setTimeout(renderExercises, 100);
 }));
 setExerciseLibraryOpen(location.hash === '#exercise-library', false);
+
+function historySessionState(session, today = toIso(new Date())) {
+  if (session.isRest) return 'rest';
+  const completion = sessionCompletion(session);
+  if (completion.state !== 'none') return completion.state;
+  return session.date < today ? 'missed' : 'planned';
+}
+const historyStateLabels = { complete: 'Terminée', partial: 'Partielle', started: 'Commencée', missed: 'Manquée', rest: 'Repos validé', planned: 'À renseigner' };
+function renderRegularityOverview(sessions) {
+  const months = new Map();
+  sessions.forEach((session) => {
+    const key = session.date.slice(0, 7); const state = historySessionState(session);
+    const month = months.get(key) || { total: 0, followed: 0, missed: 0 };
+    month.total += 1;
+    if (state === 'complete' || state === 'rest') month.followed += 1;
+    if (state === 'missed') month.missed += 1;
+    months.set(key, month);
+  });
+  const recent = [...months.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 6);
+  document.querySelector('#regularity-overview').innerHTML = recent.length ? recent.map(([key, month]) => {
+    const percentage = month.total ? Math.round((month.followed / month.total) * 100) : 0;
+    const label = new Date(`${key}-01T12:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    return `<article class="regularity-month"><span>${escapeHtml(label)}</span><strong>${percentage}%</strong><small>${month.followed}/${month.total} suivie${month.followed > 1 ? 's' : ''}${month.missed ? ` · ${month.missed} manquée${month.missed > 1 ? 's' : ''}` : ''}</small><div class="regularity-bar"><i style="width:${percentage}%"></i></div></article>`;
+  }).join('') : '<p class="empty-state">La régularité apparaîtra après les premières séances.</p>';
+}
+function renderAllSessions() {
+  if (!allSessionsPage) return;
+  const today = toIso(new Date());
+  const allPast = getSessions().filter((session) => session.date <= today).sort((a, b) => b.date.localeCompare(a.date));
+  const yearFilter = document.querySelector('#session-history-year'); const selectedYear = yearFilter.value;
+  const years = [...new Set(allPast.map((session) => session.date.slice(0, 4)))];
+  yearFilter.innerHTML = '<option value="">Toutes les années</option>' + years.map((year) => `<option value="${year}">${year}</option>`).join('');
+  yearFilter.value = years.includes(selectedYear) ? selectedYear : '';
+  const query = normalize(document.querySelector('#session-history-search').value); const status = document.querySelector('#session-history-status').value; const year = yearFilter.value;
+  const sessions = allPast.filter((session) => {
+    const searchable = normalize(`${session.name} ${(session.exercises || []).map((exercise) => typeof exercise === 'string' ? exercise : exercise.name || '').join(' ')}`);
+    return (!query || searchable.includes(query)) && (!status || historySessionState(session, today) === status) && (!year || session.date.startsWith(year));
+  });
+  document.querySelector('#all-sessions-count').textContent = `${sessions.length} séance${sessions.length > 1 ? 's' : ''}`;
+  renderRegularityOverview(allPast);
+  document.querySelector('#all-sessions-list').innerHTML = sessions.length ? sessions.map((session) => {
+    const date = new Date(`${session.date}T12:00`); const state = historySessionState(session, today); const completion = sessionCompletion(session);
+    const details = session.isRest ? 'Journée de récupération planifiée' : `${session.exercises?.length || 0} exercice${session.exercises?.length > 1 ? 's' : ''}${completion.completed ? ` · ${completion.completed}/${completion.total} renseigné${completion.completed > 1 ? 's' : ''}` : ''}`;
+    return `<button type="button" class="history-session" data-history-session-id="${escapeHtml(session.id)}"><time><strong>${date.getDate()}</strong><span>${date.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }).replace('.', '')}</span></time><span class="history-session-info"><strong>${escapeHtml(session.name)}</strong><small>${escapeHtml(details)}</small></span><span class="history-state ${state}">${historyStateLabels[state]}</span><span class="chevron">›</span></button>`;
+  }).join('') : '<p class="empty-state">Aucune séance ne correspond à ces filtres.</p>';
+}
+function setAllSessionsOpen(open, updateHash = true) {
+  if (!allSessionsPage) return;
+  if (open && exerciseLibrary && !exerciseLibrary.hidden) setExerciseLibraryOpen(false, false);
+  allSessionsPage.hidden = !open;
+  document.body.classList.toggle('all-sessions-open', open);
+  if (open) { renderAllSessions(); window.scrollTo({ top: 0, behavior: 'auto' }); }
+  if (updateHash) history.pushState(null, '', open ? '#all-sessions' : '#sessions');
+}
+document.querySelectorAll('[data-open-all-sessions]').forEach((button) => button.addEventListener('click', (event) => { event.preventDefault(); setAllSessionsOpen(true); }));
+document.querySelector('[data-close-all-sessions]').addEventListener('click', () => setAllSessionsOpen(false));
+document.querySelectorAll('#session-history-search, #session-history-status, #session-history-year').forEach((field) => field.addEventListener(field.tagName === 'INPUT' ? 'input' : 'change', renderAllSessions));
+document.querySelector('#all-sessions-list').addEventListener('click', (event) => { const button = event.target.closest('[data-history-session-id]'); if (!button) return; const session = getSessions().find((item) => item.id === button.dataset.historySessionId); if (session) openWorkout(session); });
+window.addEventListener('hashchange', () => setAllSessionsOpen(location.hash === '#all-sessions', false));
+setAllSessionsOpen(location.hash === '#all-sessions', false);
 
 let displayExerciseSource = null; let displayExerciseCache = null;
 function getDisplayExercises() {
@@ -757,6 +819,7 @@ function renderDashboard() {
   const goalCards = block && block.objectives.length ? block.objectives.map((objective) => { const result = blockObjectiveProgress(block, objective); return `<article class="stat-card block-goal-card"><span class="stat-label">OBJECTIF · BLOC ${block.number}</span><strong>${escapeHtml(objective.label)}</strong><span class="stat-note">Meilleure performance : ${escapeHtml(result.best)}</span><div class="mini-progress"><i style="width:${result.progress}%"></i></div></article>`; }).join('') : Array.from({ length: 3 }, (_, index) => `<article class="stat-card block-waiting"><span class="stat-label">OBJECTIF ${index + 1} · PROCHAIN BLOC</span><strong>À définir</strong><span class="stat-note">S’affichera dès que la période du bloc sera renseignée dans le tableau.</span><div class="mini-progress"><i style="width:0%"></i></div></article>`).join('');
   document.querySelector('#dashboard-stats').innerHTML = sessionCard + goalCards;
   renderJournal(); renderBlockCockpit(block, sessions); renderWeeklyVolume(); renderTrophies();
+  if (document.body.classList.contains('all-sessions-open')) renderAllSessions();
 }
 function renderCalendar() {
   const today = toIso(new Date()); let start; let days;
