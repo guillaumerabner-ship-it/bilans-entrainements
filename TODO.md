@@ -113,7 +113,8 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 
 - [x] Préparer l’application Web installable : manifeste, icône, service worker, navigation mobile persistante et dialogues adaptés aux écrans Samsung.
 - [x] Permettre la connexion Google sur un domaine HTTPS public via le pont Apps Script sécurisé, sans dépendre du relais `localhost`.
-- [ ] Héberger `index.html`, `styles.css` et `app.js` sur Internet.
+- [x] Redéployer Apps Script avec le pont public envoyant sa réponse à la fenêtre principale (`top.postMessage`), puis valider la connexion GitHub Pages.
+- [x] Héberger `index.html`, `styles.css` et `app.js` sur Internet avec GitHub Pages et un déploiement automatique GitHub Actions.
 - [ ] Ouvrir et configurer l’application depuis un smartphone.
 - [ ] Vérifier l’affichage, les dialogues, le calendrier, les séries horizontales et les lecteurs vidéo sur petit écran.
 - [ ] Ajouter l’application à l’écran d’accueil comme application Web.
