@@ -80,7 +80,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Permettre au coach d’ouvrir le calendrier de l’élève sélectionné et de créer, modifier ou programmer ses séances.
 - [x] Ajouter des rôles distincts pour Guillaume et le coach dans l’interface et la base d’utilisateurs.
 - [x] Permettre au coach de valider une vidéo, demander une correction et écrire un commentaire de revue. Les actions « Valider » et « À refaire » sont synchronisées et produisent un retour lisible côté élève.
-- [ ] Ajouter des filtres pour afficher les vidéos non revues, validées ou à refaire.
+- [x] Ajouter des filtres pour afficher les vidéos non revues, validées ou à refaire.
 - [ ] Étendre le premier fil d’actualité vidéo, désormais visible côté élève, en véritable conversation par séance et par exercice avec réponses des deux côtés.
 - [ ] **PRIORITÉ HAUTE — Permettre l’envoi direct de vidéos enregistrées sur le téléphone**, en complément des liens YouTube non répertoriés.
 - [ ] Choisir et configurer un stockage sécurisé pour les fichiers audio et vidéo ; Google Sheets conserve uniquement les identifiants, métadonnées, statuts et liens d’accès.
