@@ -82,9 +82,34 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [ ] Permettre au coach de valider une vidéo, demander une correction et écrire un commentaire de revue. Bouton de validation et retrait immédiat du flux de l’élève terminés ; persistance multi-appareil à valider après redéploiement.
 - [ ] Ajouter des filtres pour afficher les vidéos non revues, validées ou à refaire.
 - [ ] Ajouter un fil de feedback par séance et par exercice, visible par l’élève et le coach.
-- [ ] Décider si l’envoi direct de fichiers vidéo depuis le téléphone est nécessaire, en complément des liens YouTube non répertoriés.
+- [ ] **PRIORITÉ HAUTE — Permettre l’envoi direct de vidéos enregistrées sur le téléphone**, en complément des liens YouTube non répertoriés.
+- [ ] Choisir et configurer un stockage sécurisé pour les fichiers audio et vidéo ; Google Sheets conserve uniquement les identifiants, métadonnées, statuts et liens d’accès.
+- [ ] Sur mobile, permettre de sélectionner une vidéo existante ou d’ouvrir directement la caméra, puis afficher la progression de l’envoi, sa réussite ou son échec.
+- [ ] Prévoir une taille et une durée maximales, une reprise après coupure réseau et, si nécessaire, une compression avant l’envoi.
+- [ ] Étendre `APP_VIDEOS` pour distinguer un lien YouTube d’un fichier envoyé, conserver son type MIME, sa taille, sa durée et son identifiant de stockage.
+- [ ] Sécuriser l’accès aux médias par élève et coach autorisé, sans rendre les fichiers publiquement accessibles par leur simple URL.
 - [ ] Prévoir une procédure simple pour révoquer et renouveler la clé privée.
 - [ ] Conserver la configuration privée séparément sur chaque navigateur ou concevoir ultérieurement une authentification utilisateur.
+
+## Notes vocales et boîte de travail du coach
+
+- [ ] **PRIORITÉ HAUTE — Ajouter une note vocale à chaque exercice depuis le microphone du téléphone.**
+- [ ] Demander clairement l’autorisation du microphone et gérer les cas où elle est refusée ou indisponible.
+- [ ] Fournir les commandes enregistrer, pause/reprise, écouter, recommencer et supprimer avant l’envoi.
+- [ ] Afficher la durée d’enregistrement et limiter la durée ou le poids maximal d’une note vocale.
+- [ ] Conserver localement une note non envoyée et reprendre automatiquement son transfert après le retour de la connexion.
+- [ ] Créer un registre technique des notes vocales reliées à l’élève, la séance et l’index de l’exercice, avec date, durée, statut de lecture et identifiant du fichier stocké.
+- [ ] Afficher les notes vocales dans la fiche de séance de l’élève et permettre au coach de les écouter sans téléchargement manuel.
+- [ ] Permettre à l’élève de remplacer ou supprimer sa note tant qu’elle n’a pas été traitée, en conservant un marqueur de suppression synchronisé.
+- [ ] **PRIORITÉ HAUTE — Créer dans la console coach une vue “Que dois-je faire ?”.**
+- [ ] Regrouper dans cette vue les exercices à revoir contenant au moins une nouvelle vidéo, une note vocale ou écrite, ou une demande de correction encore ouverte.
+- [ ] Présenter chaque élément sous forme de carte rapide : élève, date, séance, exercice, commentaire écrit, lecteur vocal, miniature et lecteur vidéo.
+- [ ] Ajouter les filtres `À revoir`, `Nouveau`, `Correction demandée`, `Validé` et les filtres par élève, date et type de média.
+- [ ] Permettre au coach de valider, demander une correction, écrire une réponse et passer directement à l’élément suivant.
+- [ ] Ajouter les états non lu/lu/traité et un compteur visible dans la navigation coach.
+- [ ] Trier par priorité puis ancienneté, tout en signalant les éléments dont la séance est proche ou déjà passée.
+- [ ] Faire apparaître le retour du coach dans l’application élève et prévoir un indicateur de nouveau feedback.
+- [ ] Tester le parcours complet sur téléphone : enregistrer un vocal, envoyer une vidéo, couper puis rétablir Internet, consulter et traiter les deux éléments côté coach.
 
 ## Performances
 
