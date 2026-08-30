@@ -44,5 +44,66 @@
     return String(sheetComment || '');
   }
 
-  root.SessionSyncPriority = { SESSION_FIELDS, buildSessionOverride, applySessionOverride, compactSessionOverride, effectiveSetValues, effectiveComment };
+  function exerciseIdentity(exercise) {
+    if (typeof exercise === 'string') return exercise.trim().toLowerCase();
+    return String(exercise?.matchKey || exercise?.id || exercise?.name || '').trim().toLowerCase();
+  }
+
+  function normalizeSeriesCount(value, fallback = 1) {
+    const parsed = Math.trunc(Number(value));
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(20, Math.max(1, parsed));
+  }
+
+  function plannedSeriesCount(exercise) {
+    if (!exercise || typeof exercise === 'string') return 0;
+    const explicit = Math.trunc(Number(exercise.seriesCount));
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    return Array.isArray(exercise.targets) ? exercise.targets.length : 0;
+  }
+
+  function googleCredentialExpiresAt(credential, decodeBase64 = (value) => atob(value)) {
+    try {
+      const payload = String(credential || '').split('.')[1];
+      if (!payload) return 0;
+      const normalized = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
+      return Number(JSON.parse(decodeBase64(normalized)).exp || 0) * 1000;
+    } catch (error) { return 0; }
+  }
+
+  function googleCredentialNeedsRefresh(credential, now = Date.now(), decodeBase64) {
+    const expiresAt = googleCredentialExpiresAt(credential, decodeBase64);
+    return !expiresAt || expiresAt - now < 5 * 60 * 1000;
+  }
+
+  function reconcileSessionExercises(existingExercises, exerciseDrafts) {
+    const existingByKey = new Map((existingExercises || []).map((exercise) => [exerciseIdentity(exercise), exercise]));
+    return (exerciseDrafts || []).map((draft) => {
+      const existing = existingByKey.get(exerciseIdentity(draft));
+      const seriesCount = normalizeSeriesCount(draft.seriesCount);
+      const previousTargets = typeof existing === 'string' ? [] : Array.isArray(existing?.targets) ? existing.targets : [];
+      const targets = Array.from({ length: seriesCount }, (_, index) => previousTargets[index] ?? draft.targets?.[index] ?? 0);
+      return { ...(typeof existing === 'object' && existing ? existing : {}), ...draft, seriesCount, targets };
+    });
+  }
+
+  function remapSessionProgress(progress, existingExercises, updatedExercises) {
+    if (!progress) return progress;
+    const oldIndexByKey = new Map((existingExercises || []).map((exercise, index) => [exerciseIdentity(exercise), index]));
+    const values = {}; const manualSets = {};
+    (updatedExercises || []).forEach((exercise, newIndex) => {
+      const oldIndex = oldIndexByKey.get(exerciseIdentity(exercise));
+      if (oldIndex === undefined) return;
+      const seriesCount = plannedSeriesCount(exercise) || 1;
+      if (Array.isArray(progress.values?.[oldIndex])) values[newIndex] = progress.values[oldIndex].slice(0, seriesCount);
+      if (progress.manualSets?.[oldIndex] && typeof progress.manualSets[oldIndex] === 'object') {
+        manualSets[newIndex] = Object.fromEntries(Object.entries(progress.manualSets[oldIndex]).filter(([setIndex]) => Number(setIndex) < seriesCount));
+      }
+    });
+    return { ...progress, values, manualSets };
+  }
+
+  root.SessionSyncPriority = { SESSION_FIELDS, buildSessionOverride, applySessionOverride, compactSessionOverride, effectiveSetValues, effectiveComment, normalizeSeriesCount, plannedSeriesCount, googleCredentialExpiresAt, googleCredentialNeedsRefresh, reconcileSessionExercises, remapSessionProgress };
 })(globalThis);
+
+if (typeof module !== 'undefined' && module.exports) module.exports = globalThis.SessionSyncPriority;

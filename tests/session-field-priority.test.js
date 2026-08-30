@@ -19,4 +19,32 @@ assert.deepStrictEqual(Array.from(sync.effectiveSetValues([7, 6], [9], { 0: true
 assert.deepStrictEqual(Array.from(sync.effectiveSetValues([7, 6], [0], { 0: true })), [6]);
 assert.strictEqual(sync.effectiveComment({}, 'Commentaire du tableau'), 'Commentaire du tableau');
 assert.strictEqual(sync.effectiveComment({ comment: '', commentTouched: true }, 'Commentaire du tableau'), '');
+assert.strictEqual(sync.normalizeSeriesCount('4'), 4);
+assert.strictEqual(sync.normalizeSeriesCount('99'), 20);
+assert.strictEqual(sync.normalizeSeriesCount('0'), 1);
+assert.strictEqual(sync.plannedSeriesCount({ seriesCount: 4, targets: [] }), 4);
+assert.strictEqual(sync.plannedSeriesCount({ targets: [8, 7, 6] }), 3);
+assert.strictEqual(sync.plannedSeriesCount('Ancien exercice'), 0);
+const jwtPayload = Buffer.from(JSON.stringify({ exp: 2000 })).toString('base64url');
+const fakeCredential = `header.${jwtPayload}.signature`;
+const decodeJwt = (value) => Buffer.from(value, 'base64').toString('utf8');
+assert.strictEqual(sync.googleCredentialExpiresAt(fakeCredential, decodeJwt), 2000000);
+assert.strictEqual(sync.googleCredentialNeedsRefresh(fakeCredential, 1600000, decodeJwt), false);
+assert.strictEqual(sync.googleCredentialNeedsRefresh(fakeCredential, 1800001, decodeJwt), true);
+assert.strictEqual(sync.googleCredentialNeedsRefresh('invalide', 0, decodeJwt), true);
+
+const existingExercises = [
+  { name: 'Dips', matchKey: 'dips', seriesCount: 3, targets: [10, 9, 8], note: 'conserver' },
+  { name: 'Tractions', matchKey: 'tractions', seriesCount: 2, targets: [6, 5] },
+];
+const editedExercises = sync.reconcileSessionExercises(existingExercises, [
+  { name: 'Tractions', matchKey: 'tractions', seriesCount: 3, targets: [0, 0, 0], metric: 'repetitions' },
+  { name: 'Pompes', matchKey: 'pompes', seriesCount: 2, targets: [0, 0], metric: 'repetitions' },
+]);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(editedExercises)), [
+  { name: 'Tractions', matchKey: 'tractions', seriesCount: 3, targets: [6, 5, 0], metric: 'repetitions' },
+  { name: 'Pompes', matchKey: 'pompes', seriesCount: 2, targets: [0, 0], metric: 'repetitions' },
+]);
+const remappedProgress = sync.remapSessionProgress({ values: { 0: [10, 9, 8], 1: [6, 5] }, manualSets: { 0: { 0: true }, 1: { 0: true, 1: true } }, comment: 'Solide', commentTouched: true }, existingExercises, editedExercises);
+assert.deepStrictEqual(JSON.parse(JSON.stringify(remappedProgress)), { values: { 0: [6, 5] }, manualSets: { 0: { 0: true, 1: true } }, comment: 'Solide', commentTouched: true });
 console.log('Tests de priorité champ par champ : OK');

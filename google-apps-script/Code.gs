@@ -2,13 +2,13 @@ const APP_SCHEMA = {
   APP_EXERCISES: ['ID', 'Nom officiel', 'Famille', 'Sous-catégorie', 'Niveau', 'Métriques JSON', 'Alias JSON', 'Modifié le', 'Archivé', 'Propriétaire ID'],
   APP_SESSIONS: ['Session ID', 'Date séance', 'Nom', 'Source', 'Repos', 'Séance libre', 'Consignes', 'Exercices JSON', 'Supprimée', 'Modifié le', 'Élève ID', 'Champs modifiés JSON'],
   APP_PROGRESS: ['Session ID', 'Date séance', 'Séance', 'Exercice ID', 'Index exercice', 'Valeurs JSON', 'Commentaire élève', 'Modifié le', 'Élève ID', 'Champs manuels JSON'],
-  APP_VIDEOS: ['ID vidéo', 'Session ID', 'Date séance', 'Séance', 'Exercice ID', 'Index exercice', 'Exercice', 'URL YouTube', 'Statut coach', 'Ajouté le', 'Modifié le', 'Élève ID', 'Commentaire coach', 'Supprimée'],
+  APP_VIDEOS: ['ID vidéo', 'Session ID', 'Date séance', 'Séance', 'Exercice ID', 'Index exercice', 'Exercice', 'URL YouTube', 'Statut coach', 'Ajouté le', 'Modifié le', 'Élève ID', 'Commentaire coach', 'Supprimée', 'Type média', 'Clé R2', 'Nom fichier', 'Type MIME', 'Taille octets'],
   APP_SETTINGS: ['Clé', 'Valeur', 'Modifié le'],
   APP_USERS: ['User ID', 'Email', 'Nom', 'Rôle', 'Actif', 'Modifié le'],
   APP_COACH_STUDENTS: ['Coach ID', 'Élève ID', 'Actif', 'Modifié le'],
 };
 
-const APP_SCHEMA_VERSION = 7;
+const APP_SCHEMA_VERSION = 8;
 const TEST_COACH_EMAIL = 'glogements@gmail.com';
 const GOOGLE_OAUTH_CLIENT_ID = '538510396242-frqqtj211t5deppj6882pueubmvu4s7t.apps.googleusercontent.com';
 
@@ -383,10 +383,11 @@ function upsertProgress_(spreadsheet, data) {
 }
 
 function upsertVideo_(spreadsheet, data) {
-  if (!data.id || !data.sessionId || !data.url) throw new Error('Vidéo incomplète.');
+  if (!data.id || !data.sessionId || (!data.url && !data.objectKey)) throw new Error('Média incomplet.');
   return upsertByKeyIfNewer_(spreadsheet.getSheetByName('APP_VIDEOS'), 'ID vidéo', data.id, data.modifiedAt, {
     'ID vidéo': data.id, 'Session ID': data.sessionId, 'Date séance': data.date || '', 'Séance': data.sessionName || '', 'Exercice ID': data.exerciseKey || '', 'Index exercice': Number(data.exerciseIndex || 0),
-    'Exercice': data.exerciseName || '', 'URL YouTube': data.url, 'Statut coach': data.status || 'coach-review', 'Ajouté le': data.addedAt ? new Date(data.addedAt) : new Date(), 'Modifié le': writeDate_(data.modifiedAt), 'Élève ID': data.studentId || 'student-owner', 'Commentaire coach': data.coachComment || '', 'Supprimée': Boolean(data.deleted),
+    'Exercice': data.exerciseName || '', 'URL YouTube': data.url || '', 'Statut coach': data.status || 'coach-review', 'Ajouté le': data.addedAt ? new Date(data.addedAt) : new Date(), 'Modifié le': writeDate_(data.modifiedAt), 'Élève ID': data.studentId || 'student-owner', 'Commentaire coach': data.coachComment || '', 'Supprimée': Boolean(data.deleted),
+    'Type média': data.mediaType || (String(data.mimeType || '').startsWith('audio/') ? 'audio' : 'video'), 'Clé R2': data.objectKey || '', 'Nom fichier': data.fileName || '', 'Type MIME': data.mimeType || '', 'Taille octets': Number(data.size || 0),
   });
 }
 
@@ -482,7 +483,7 @@ function buildSnapshot_(studentId, sinceValue) {
   const changedSince_ = (row) => !partial || new Date(row['Modifié le']).getTime() > since.getTime();
   const progress = {}; rowsAsObjects_(spreadsheet.getSheetByName('APP_PROGRESS')).filter(belongsToStudent_).filter(changedSince_).forEach((row) => { const id = String(row['Session ID']); const index = String(row['Index exercice']); const fields = parseJson_(row['Champs manuels JSON'], {}); progress[id] = progress[id] || { values: {}, manualSets: {}, comment: '', commentTouched: false, modifiedAt: '' }; progress[id].values[index] = parseJson_(row['Valeurs JSON'], []); progress[id].manualSets[index] = fields.manualSets || {}; if (fields.commentTouched || row['Commentaire élève']) { progress[id].comment = String(row['Commentaire élève'] || ''); progress[id].commentTouched = true; } progress[id].modifiedAt = iso_(row['Modifié le']); });
   const videoRows = rowsAsObjects_(spreadsheet.getSheetByName('APP_VIDEOS')).filter(belongsToStudent_).filter(changedSince_);
-  const videos = videoRows.filter((row) => !truthy_(row['Supprimée'])).map((row) => ({ id: String(row['ID vidéo']), sessionId: String(row['Session ID']), date: date_(row['Date séance']), sessionName: String(row['Séance'] || ''), exerciseKey: String(row['Exercice ID'] || ''), exerciseIndex: Number(row['Index exercice'] || 0), exerciseName: String(row['Exercice'] || ''), url: String(row['URL YouTube'] || ''), status: String(row['Statut coach'] || ''), coachComment: String(row['Commentaire coach'] || ''), studentId: String(row['Élève ID'] || 'student-owner'), addedAt: iso_(row['Ajouté le']), modifiedAt: iso_(row['Modifié le']) })).filter((item) => item.id && item.url);
+  const videos = videoRows.filter((row) => !truthy_(row['Supprimée'])).map((row) => ({ id: String(row['ID vidéo']), sessionId: String(row['Session ID']), date: date_(row['Date séance']), sessionName: String(row['Séance'] || ''), exerciseKey: String(row['Exercice ID'] || ''), exerciseIndex: Number(row['Index exercice'] || 0), exerciseName: String(row['Exercice'] || ''), url: String(row['URL YouTube'] || ''), mediaType: String(row['Type média'] || 'video'), objectKey: String(row['Clé R2'] || ''), fileName: String(row['Nom fichier'] || ''), mimeType: String(row['Type MIME'] || ''), size: Number(row['Taille octets'] || 0), status: String(row['Statut coach'] || ''), coachComment: String(row['Commentaire coach'] || ''), studentId: String(row['Élève ID'] || 'student-owner'), addedAt: iso_(row['Ajouté le']), modifiedAt: iso_(row['Modifié le']) })).filter((item) => item.id && (item.url || item.objectKey));
   const deletedVideoIds = videoRows.filter((row) => truthy_(row['Supprimée'])).map((row) => String(row['ID vidéo'])).filter(Boolean);
   const exerciseRows = rowsAsObjects_(spreadsheet.getSheetByName('APP_EXERCISES')).filter((row) => !row['Propriétaire ID'] || String(row['Propriétaire ID']) === studentId).filter(changedSince_); const mapExercise_ = (row) => ({ id: String(row.ID), name: String(row['Nom officiel']), category: String(row.Famille || ''), subcategory: String(row['Sous-catégorie'] || ''), level: String(row.Niveau || ''), metrics: parseJson_(row['Métriques JSON'], []), aliases: parseJson_(row['Alias JSON'], []), modifiedAt: iso_(row['Modifié le']) });
   const exercises = exerciseRows.filter((row) => !truthy_(row.Archivé)).map(mapExercise_).filter((item) => item.id && item.name); const archivedExercises = exerciseRows.filter((row) => truthy_(row.Archivé)).map(mapExercise_).filter((item) => item.id && item.name);

@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260823-12" />
+    <link rel="stylesheet" href="styles.css?v=20260823-13" />
   </head>
   <body>
     <section id="auth-gate" class="auth-gate" aria-labelledby="auth-title">
@@ -91,8 +91,8 @@
     <dialog id="trophy-dialog"><div class="form-card trophy-card"><button class="close" type="button" data-close-trophies aria-label="Fermer">×</button><div id="trophy-content"></div></div></dialog>
     <dialog id="settings-dialog"><form id="appearance-form" class="form-card appearance-card"><button class="close" type="button" data-close-settings aria-label="Fermer">×</button><p class="kicker">APPARENCE</p><h2>Charte graphique</h2><p class="help-text">Choisis une ambiance complète : les fonds, contrastes et couleurs secondaires s’adaptent ensemble.</p><fieldset class="theme-options"><legend>Ambiance</legend><label class="theme-choice"><input type="radio" name="theme" value="noir-rouge" /><span class="theme-preview preview-red"><i></i><i></i><i></i></span><span><strong>Noir &amp; rouge</strong><small>Sombre, sportif et contrasté</small></span></label><label class="theme-choice"><input type="radio" name="theme" value="graphite" /><span class="theme-preview preview-graphite"><i></i><i></i><i></i></span><span><strong>Graphite</strong><small>Neutre avec un rouge plus discret</small></span></label><label class="theme-choice"><input type="radio" name="theme" value="clair-rouge" /><span class="theme-preview preview-light"><i></i><i></i><i></i></span><span><strong>Clair &amp; carmin</strong><small>Lumineux, éditorial et chaleureux</small></span></label></fieldset><label class="accent-setting">Couleur d’accent personnalisée<div><input id="accent-color" type="color" value="#e1443e" /><output id="accent-code">#E1443E</output></div><small>L’accent personnalise les boutons, repères et graphiques sans casser les contrastes du thème.</small></label><section class="shared-data-settings"><div class="shared-data-heading"><span><strong>Données partagées</strong><small>Séries, commentaires, vidéos et exercices sur tous tes appareils.</small></span><output id="shared-api-status" data-state="off">Non connecté</output></div><label>Adresse du service Google Apps Script<input id="shared-api-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" /></label><label>Clé privée de synchronisation<input id="shared-api-token" type="password" autocomplete="off" placeholder="Clé donnée lors de l’installation" /></label><div class="shared-data-help"><span>Les saisies restent enregistrées sur cet appareil même sans connexion.</span><button id="test-shared-api" class="secondary-button" type="button">Tester la connexion</button></div></section><div class="appearance-actions"><button id="reset-appearance" class="secondary-button" type="button">Réinitialiser</button><button class="new-session" type="submit">Enregistrer</button></div></form></dialog>
     <script src="https://accounts.google.com/gsi/client" defer></script>
-    <script src="sync-priority.js?v=20260823-2"></script>
-    <script src="app.js?v=20260823-70"></script>
+    <script src="sync-priority.js?v=20260830-5"></script>
+    <script src="app.js?v=20260830-81"></script>
     <div id="achievement-toast" class="achievement-toast" role="status" aria-live="polite"></div>
   </body>
 </html>

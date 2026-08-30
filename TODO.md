@@ -1,6 +1,6 @@
 # Todo — Bilans d’entraînements
 
-Dernière mise à jour : 23 août 2026
+Dernière mise à jour : 30 août 2026
 
 Ce fichier est la liste de référence du projet. Après chaque évolution, déplacer ou actualiser les éléments concernés afin de conserver une vue fidèle de ce qui fonctionne et de ce qui reste à faire.
 
@@ -23,6 +23,10 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Ne plus construire la liste complète des exercices lorsque seule la page d’accueil est affichée, et regrouper les rendus déclenchés par les synchronisations afin d’éviter les gels de Chrome.
 - [x] Réduire les blocages restants : analyser les onglets mensuels par lots avec restitution régulière de la main au navigateur, dédupliquer les séances en temps linéaire, mémoriser les tris et options de filtres, et temporiser la recherche de la bibliothèque.
 - [ ] Valider sur plusieurs rechargements que l’accueil reste fluide après une synchronisation Google Sheet.
+- [x] **PRIORITÉ HAUTE — Corriger la modification d’une séance** afin de pouvoir ajouter et supprimer des exercices dans une séance existante, en conservant les séries, les résultats et les marqueurs de saisie des exercices qui ne changent pas.
+- [x] Préciser le nombre de séries pour chaque exercice lors de la création ou de la modification d’une séance, puis afficher ce nombre dans les séances à faire du calendrier et dans leur fiche.
+- [ ] Prévoir une barre de recherche pour retrouver rapidement un exercice dans l’écran de création ou de modification d’une séance, dans les fiches d’entraînement et dans les autres listes d’exercices où elle est pertinente.
+- [ ] Reprendre et améliorer le système de trophées : revoir les règles de déblocage, la pertinence des objectifs, la progression affichée et la cohérence avec l’historique réel.
 - [x] Activer et valider le filtrage serveur par utilisateur et par élève dans les espaces élève et coach.
 - [x] Déployer le schéma 4 et valider la connexion au service différentiel, le cache Google et les marqueurs de suppression vidéo.
 - [x] Redéployer la protection « dernière modification gagnante ».
@@ -39,7 +43,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Conserver la connexion Google lors d’un simple rechargement de la page, avec nouvelle vérification du compte côté serveur et déconnexion explicite toujours disponible.
 - [x] Dupliquer une séance vers une autre date en copiant son programme, ses consignes, sa durée et son énergie prévue, sans copier les résultats ni les vidéos.
 - [x] Synchroniser les séries, répétitions et commentaires dans `APP_PROGRESS`.
-- [x] Synchroniser les liens vidéo dans `APP_VIDEOS`.
+- [x] Synchroniser les médias privés et les anciens liens vidéo dans `APP_VIDEOS`.
 - [x] Synchroniser la création et la modification des exercices dans `APP_EXERCISES`.
 - [x] Conserver les saisies localement lorsque la connexion Internet est indisponible.
 - [x] Prévoir une file d’attente pour renvoyer les changements après reconnexion.
@@ -60,6 +64,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Définir la priorité en cas de conflit : une donnée explicitement saisie dans l’application prime sur la donnée du tableau mensuel pour le même champ ; en l’absence de saisie dans l’application, la valeur à jour du tableau est utilisée.
 - [x] Appliquer et tester localement cette priorité champ par champ pour les séries, commentaires, consignes et propriétés de séance, sans masquer les autres mises à jour provenant du tableau.
 - [ ] Terminer la validation de bout en bout des onglets « MOIS 2026 » : le commentaire élève vers `APP_PROGRESS` et la consigne coach sont validés ; il reste à tester une modification de série et de structure de séance.
+- [ ] **PRIORITÉ HAUTE — Auditer et corriger la remontée application → tableau des séances réalisées** : vérifier champ par champ les séries, valeurs réalisées, commentaires élève, consignes, exercices, statuts et modifications de structure afin qu’aucune mise à jour ne reste partielle.
 - [x] Lire automatiquement les onglets mensuels référencés dans `INDEX`, au démarrage, au retour sur l’application et toutes les quinze minutes.
 - [x] Considérer les valeurs numériques renseignées sous les exercices des onglets mensuels comme des séries réalisées pour le calendrier, le journal, les volumes, les progressions et les trophées.
 - [ ] Décider si les séances créées dans l’application doivent aussi modifier visuellement les cases des onglets mensuels, ou si `APP_SESSIONS` reste leur source dédiée.
@@ -82,24 +87,24 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Permettre au coach de valider une vidéo, demander une correction et écrire un commentaire de revue. Les actions « Valider » et « À refaire » sont synchronisées et produisent un retour lisible côté élève.
 - [x] Ajouter des filtres pour afficher les vidéos non revues, validées ou à refaire.
 - [ ] Étendre le premier fil d’actualité vidéo, désormais visible côté élève, en véritable conversation par séance et par exercice avec réponses des deux côtés.
-- [ ] **PRIORITÉ HAUTE — Permettre l’envoi direct de vidéos enregistrées sur le téléphone**, en complément des liens YouTube non répertoriés.
-- [ ] Choisir et configurer un stockage sécurisé pour les fichiers audio et vidéo ; Google Sheets conserve uniquement les identifiants, métadonnées, statuts et liens d’accès.
+- [x] **PRIORITÉ HAUTE — Permettre l’envoi direct de vidéos enregistrées sur le téléphone.** L’ajout de nouveaux liens YouTube a été retiré de l’interface ; les anciens liens restent lisibles.
+- [x] Choisir et configurer un stockage sécurisé pour les fichiers audio et vidéo : Cloudflare R2 conserve les fichiers et Google Sheets uniquement leurs identifiants, métadonnées et statuts.
 - [ ] Sur mobile, permettre de sélectionner une vidéo existante ou d’ouvrir directement la caméra, puis afficher la progression de l’envoi, sa réussite ou son échec.
 - [ ] Prévoir une taille et une durée maximales, une reprise après coupure réseau et, si nécessaire, une compression avant l’envoi.
-- [ ] Étendre `APP_VIDEOS` pour distinguer un lien YouTube d’un fichier envoyé, conserver son type MIME, sa taille, sa durée et son identifiant de stockage.
-- [ ] Sécuriser l’accès aux médias par élève et coach autorisé, sans rendre les fichiers publiquement accessibles par leur simple URL.
+- [ ] Finaliser les métadonnées `APP_VIDEOS` : le type de média, le type MIME, la taille et l’identifiant R2 sont enregistrés ; il reste à enregistrer la durée.
+- [x] Sécuriser l’accès aux médias par élève et coach autorisé, sans rendre les fichiers publiquement accessibles par leur simple URL.
 - [ ] Prévoir une procédure simple pour révoquer et renouveler la clé privée.
 - [ ] Conserver la configuration privée séparément sur chaque navigateur ou concevoir ultérieurement une authentification utilisateur.
 
 ## Notes vocales et boîte de travail du coach
 
-- [ ] **PRIORITÉ HAUTE — Ajouter une note vocale à chaque exercice depuis le microphone du téléphone.**
-- [ ] Demander clairement l’autorisation du microphone et gérer les cas où elle est refusée ou indisponible.
+- [x] **PRIORITÉ HAUTE — Ajouter une note vocale à chaque exercice depuis le microphone de l’appareil.**
+- [x] Demander clairement l’autorisation du microphone et gérer les cas où elle est refusée ou indisponible.
 - [ ] Fournir les commandes enregistrer, pause/reprise, écouter, recommencer et supprimer avant l’envoi.
-- [ ] Afficher la durée d’enregistrement et limiter la durée ou le poids maximal d’une note vocale.
+- [ ] Afficher la durée d’enregistrement et limiter la durée ou le poids maximal d’une note vocale. Le compteur est présent ; la limite dédiée reste à ajouter.
 - [ ] Conserver localement une note non envoyée et reprendre automatiquement son transfert après le retour de la connexion.
 - [ ] Créer un registre technique des notes vocales reliées à l’élève, la séance et l’index de l’exercice, avec date, durée, statut de lecture et identifiant du fichier stocké.
-- [ ] Afficher les notes vocales dans la fiche de séance de l’élève et permettre au coach de les écouter sans téléchargement manuel.
+- [x] Afficher les notes vocales dans la fiche de séance de l’élève et permettre au coach de les écouter sans téléchargement manuel.
 - [ ] Permettre à l’élève de remplacer ou supprimer sa note tant qu’elle n’a pas été traitée, en conservant un marqueur de suppression synchronisé.
 - [ ] **PRIORITÉ HAUTE — Créer dans la console coach une vue “Que dois-je faire ?”.**
 - [ ] Regrouper dans cette vue les exercices à revoir contenant au moins une nouvelle vidéo, une note vocale ou écrite, ou une demande de correction encore ouverte.
@@ -109,7 +114,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [ ] Ajouter les états non lu/lu/traité et un compteur visible dans la navigation coach.
 - [ ] Trier par priorité puis ancienneté, tout en signalant les éléments dont la séance est proche ou déjà passée.
 - [x] Faire apparaître le retour vidéo du coach dans l’application élève avec son statut, son commentaire et un compteur dans le fil coach.
-- [ ] Tester le parcours complet sur téléphone : enregistrer un vocal, envoyer une vidéo, couper puis rétablir Internet, consulter et traiter les deux éléments côté coach.
+- [ ] Tester le parcours complet sur téléphone : l’envoi et le traitement vidéo sont validés ; il reste le vocal et la coupure/rétablissement d’Internet.
 
 ## Performances
 
@@ -156,6 +161,8 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Redéployer Apps Script avec le pont public envoyant sa réponse à la fenêtre principale (`top.postMessage`), puis valider la connexion GitHub Pages.
 - [x] Héberger `index.html`, `styles.css` et `app.js` sur Internet avec GitHub Pages et un déploiement automatique GitHub Actions.
 - [x] Ouvrir et configurer l’application depuis un smartphone Samsung : connexion Google, clé privée et synchronisation validées.
+- [x] **PRIORITÉ HAUTE — Corriger la reconnexion sur mobile** : la session autorisée est restaurée depuis le stockage persistant lorsque Chrome/PWA a été fermé par Android, une expiration temporaire ne ferme plus l’application et le jeton Google est renouvelé discrètement au retour au premier plan.
+- [ ] Valider cette reconnexion sur téléphone après plusieurs retours d’arrière-plan, après fermeture forcée de Chrome/PWA et après expiration du jeton Google.
 - [ ] Vérifier l’affichage, les dialogues, le calendrier, les séries horizontales et les lecteurs vidéo sur petit écran.
 - [ ] Ajouter l’application à l’écran d’accueil comme application Web.
 - [ ] Tester la synchronisation ordinateur ↔ smartphone.

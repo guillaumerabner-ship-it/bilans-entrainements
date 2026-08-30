@@ -13,17 +13,47 @@ const exerciseProgressDialog = document.querySelector('#exercise-progress-dialog
 const settingsDialog = document.querySelector('#settings-dialog');
 const volumeDialog = document.querySelector('#volume-dialog');
 const trophyDialog = document.querySelector('#trophy-dialog');
-const { buildSessionOverride, applySessionOverride, compactSessionOverride, effectiveSetValues, effectiveComment } = SessionSyncPriority;
+const { buildSessionOverride, applySessionOverride, compactSessionOverride, effectiveSetValues, effectiveComment, normalizeSeriesCount, plannedSeriesCount, googleCredentialNeedsRefresh, reconcileSessionExercises, remapSessionProgress } = SessionSyncPriority;
 const GOOGLE_OAUTH_CLIENT_ID = '538510396242-frqqtj211t5deppj6882pueubmvu4s7t.apps.googleusercontent.com';
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxdazdZ5MnK2pbkBjAJkSMROPU3ZPVy0u4wU1WNk0eIuRtiJUNInEMgz5ke_TVxru_8/exec';
+const MEDIA_API_URL = 'https://bilans-media-api.guillaumerabner.workers.dev';
+const MAX_MEDIA_FILE_SIZE = 95 * 1024 * 1024;
 const AUTH_SESSION_KEY = 'training-app-google-session';
+const AUTH_SESSION_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 let authenticatedUser = null;
 let activeStudentId = 'student-owner';
 let coachAuthResult = null;
 let coachVideoFilter = 'pending';
+const voiceRecordings = new Map();
+let googleIdentityInitialized = false;
+let googleRefreshPending = false;
 
 function authStatus(message, error = false) { const status = document.querySelector('#auth-status'); if (!status) return; status.textContent = message; status.classList.toggle('error', error); }
-function currentGoogleCredential() { return parseStoredRaw(sessionStorage.getItem(AUTH_SESSION_KEY), null)?.credential || ''; }
+function storedAuthSession() {
+  const persistent = parseStoredRaw(localStorage.getItem(AUTH_SESSION_KEY), null); const legacy = parseStoredRaw(sessionStorage.getItem(AUTH_SESSION_KEY), null); const saved = persistent || legacy;
+  if (saved && !persistent) localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(saved));
+  if (saved?.savedAt && Date.now() - Number(saved.savedAt) > AUTH_SESSION_MAX_AGE) { clearStoredAuthSession(); return null; }
+  return saved;
+}
+function storeAuthSession(credential, authResult) { const saved = { credential, authResult, savedAt: Date.now() }; localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(saved)); sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(saved)); return saved; }
+function clearStoredAuthSession() { localStorage.removeItem(AUTH_SESSION_KEY); sessionStorage.removeItem(AUTH_SESSION_KEY); }
+function currentGoogleCredential() { return storedAuthSession()?.credential || ''; }
+function definitiveGoogleAuthError(error) { return /ne fait pas partie|ne correspond pas|non vérifié|accès refusé/i.test(String(error?.message || '')); }
+function initializeGoogleIdentity() {
+  if (googleIdentityInitialized || !window.google?.accounts?.id) return googleIdentityInitialized;
+  google.accounts.id.initialize({ client_id: GOOGLE_OAUTH_CLIENT_ID, callback: handleGoogleCredential, auto_select: true, cancel_on_tap_outside: false });
+  google.accounts.id.renderButton(document.querySelector('#google-signin-button'), { theme: 'outline', size: 'large', shape: 'rectangular', text: 'signin_with', locale: 'fr', width: 320 });
+  googleIdentityInitialized = true; return true;
+}
+function requestGoogleCredentialRefresh() {
+  if (googleRefreshPending || !initializeGoogleIdentity()) return;
+  googleRefreshPending = true;
+  google.accounts.id.prompt(() => { googleRefreshPending = false; });
+}
+function refreshGoogleCredentialIfNeeded() {
+  const credential = currentGoogleCredential();
+  if (authenticatedUser && googleCredentialNeedsRefresh(credential)) requestGoogleCredentialRefresh();
+}
 async function verifyGoogleCredential(credential) {
   if (!credential) throw new Error('Google n’a pas transmis ton identité.');
   let result;
@@ -43,35 +73,39 @@ async function verifyGoogleCredential(credential) {
   return result;
 }
 async function initializeGoogleLogin() {
-  const saved = parseStoredRaw(sessionStorage.getItem(AUTH_SESSION_KEY), null);
+  const saved = storedAuthSession();
+  initializeGoogleIdentity();
   if (saved?.credential && saved?.authResult?.user) {
     applyAuthenticatedUser(saved.authResult);
     authStatus('Session restaurée. Vérification discrète…');
     try {
       const result = await verifyGoogleCredential(saved.credential);
-      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ credential: saved.credential, authResult: result, savedAt: Date.now() }));
+      storeAuthSession(saved.credential, result);
       applyAuthenticatedUser(result);
+      if (googleCredentialNeedsRefresh(saved.credential)) requestGoogleCredentialRefresh();
       return;
-    } catch (error) { sessionStorage.removeItem(AUTH_SESSION_KEY); authenticatedUser = null; document.querySelector('.shell').hidden = true; document.querySelector('#coach-console').hidden = true; document.querySelector('#auth-gate').hidden = false; }
+    } catch (error) {
+      if (definitiveGoogleAuthError(error)) { clearStoredAuthSession(); authenticatedUser = null; document.querySelector('.shell').hidden = true; document.querySelector('#coach-console').hidden = true; document.querySelector('#auth-gate').hidden = false; }
+      else { authStatus('Application restaurée. Reconnexion Google en cours…'); requestGoogleCredentialRefresh(); return; }
+    }
   } else if (saved?.credential) {
     authStatus('Restauration de ta session…');
     try {
       const result = await verifyGoogleCredential(saved.credential);
-      sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ credential: saved.credential, authResult: result, savedAt: Date.now() }));
+      storeAuthSession(saved.credential, result);
       applyAuthenticatedUser(result);
       return;
-    } catch (error) { sessionStorage.removeItem(AUTH_SESSION_KEY); }
+    } catch (error) { if (definitiveGoogleAuthError(error)) clearStoredAuthSession(); else requestGoogleCredentialRefresh(); }
   }
-  if (!window.google?.accounts?.id) { authStatus('Google ne répond pas. Vérifie ta connexion Internet puis recharge la page.', true); return; }
-  google.accounts.id.initialize({ client_id: GOOGLE_OAUTH_CLIENT_ID, callback: handleGoogleCredential, auto_select: false, cancel_on_tap_outside: false });
-  google.accounts.id.renderButton(document.querySelector('#google-signin-button'), { theme: 'outline', size: 'large', shape: 'rectangular', text: 'signin_with', locale: 'fr', width: 320 });
+  if (!initializeGoogleIdentity()) { authStatus('Google ne répond pas. Vérifie ta connexion Internet puis recharge la page.', true); return; }
   authStatus('Choisis ton compte Google autorisé.');
 }
 async function handleGoogleCredential(response) {
+  googleRefreshPending = false;
   authStatus('Vérification du compte…');
   try {
     const result = await verifyGoogleCredential(response?.credential);
-    sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ credential: response.credential, authResult: result, savedAt: Date.now() }));
+    storeAuthSession(response.credential, result);
     applyAuthenticatedUser(result);
   } catch (error) { console.error('Connexion', error); authStatus(error.message || 'Connexion impossible.', true); }
 }
@@ -109,21 +143,35 @@ function renderCoachActivity() {
   feed.innerHTML = reviewed.length ? reviewed.slice(0, 8).map((video) => {
     const review = videoReviewLabel(video); const reviewedAt = video.reviewedAt || video.modifiedAt;
     const time = reviewedAt ? new Date(reviewedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : new Date(`${video.date}T12:00`).toLocaleDateString('fr-FR');
-    return `<article class="coach-activity-item ${review.tone}"><span class="coach-activity-icon">${review.tone === 'approved' ? '✓' : '↻'}</span><div><strong>${escapeHtml(review.label)} · ${escapeHtml(video.exerciseName || 'Exercice')}</strong><small>${escapeHtml(video.sessionName || '')} · ${escapeHtml(time)}</small><p>${escapeHtml(review.message)}</p></div><span class="coach-activity-actions"><a href="${escapeHtml(video.url)}" target="_blank" rel="noreferrer">Voir ↗</a><button type="button" data-delete-shared-video="${escapeHtml(video.id)}">Supprimer</button></span></article>`;
+    const viewAction = video.url ? `<a href="${escapeHtml(video.url)}" target="_blank" rel="noreferrer">Voir ↗</a>` : `<button type="button" data-open-shared-video="${escapeHtml(video.id)}">Voir</button>`;
+    return `<article class="coach-activity-item ${review.tone}"><span class="coach-activity-icon">${review.tone === 'approved' ? '✓' : '↻'}</span><div><strong>${escapeHtml(review.label)} · ${escapeHtml(video.exerciseName || 'Exercice')}</strong><small>${escapeHtml(video.sessionName || '')} · ${escapeHtml(time)}</small><p>${escapeHtml(review.message)}</p></div><span class="coach-activity-actions">${viewAction}<button type="button" data-delete-shared-video="${escapeHtml(video.id)}">Supprimer</button></span></article>`;
   }).join('') : '<p class="coach-activity-empty">Les validations et demandes de correction de ton coach apparaîtront ici.</p>';
 }
-function coachVideoReviewCard(video) { return `<article data-coach-video-card="${escapeHtml(video.id)}">${youtubePlayer(video.url, `${video.exerciseName} — ${video.date}`)}<div class="coach-video-meta"><strong>${escapeHtml(video.exerciseName || 'Exercice')}</strong><small>${escapeHtml(video.sessionName || '')} · ${new Date(`${video.date}T12:00`).toLocaleDateString('fr-FR')}</small></div><textarea data-coach-video-comment placeholder="Ajoute un conseil facultatif pour l’élève…">${escapeHtml(video.coachComment || '')}</textarea><div class="coach-review-actions"><button type="button" data-coach-video-status="approved">✓ Valider</button><button type="button" data-coach-video-status="redo">↻ À refaire</button></div></article>`; }
+function coachVideoReviewCard(video) { return `<article data-coach-video-card="${escapeHtml(video.id)}">${storedMediaPlayer(video, `${video.exerciseName} — ${video.date}`)}<div class="coach-video-meta"><strong>${escapeHtml(video.exerciseName || 'Exercice')}</strong><small>${escapeHtml(video.sessionName || '')} · ${new Date(`${video.date}T12:00`).toLocaleDateString('fr-FR')}</small></div><textarea data-coach-video-comment placeholder="Ajoute un conseil facultatif pour l’élève…">${escapeHtml(video.coachComment || '')}</textarea><div class="coach-review-actions"><button type="button" data-coach-video-status="approved">✓ Valider</button><button type="button" data-coach-video-status="redo">↻ À refaire</button></div></article>`; }
 function openCoachStudentWorkspace(target) { document.querySelector('#coach-console').hidden = true; document.querySelector('.shell').hidden = false; let bar = document.querySelector('#coach-context-bar'); if (!bar) { document.body.insertAdjacentHTML('beforeend', '<div id="coach-context-bar" class="coach-context-bar"><span>Mode coach · Guillaume</span><button type="button" data-coach-back>← Retour à la console</button></div>'); bar = document.querySelector('#coach-context-bar'); } bar.hidden = false; document.querySelector(target)?.scrollIntoView(); }
 window.addEventListener('load', initializeGoogleLogin);
+document.addEventListener('click', (event) => {
+  if (!event.target.closest('[data-auth-logout]')) return;
+  event.stopImmediatePropagation(); clearStoredAuthSession(); window.google?.accounts?.id?.disableAutoSelect(); location.reload();
+}, true);
 document.addEventListener('click', (event) => {
   const filter = event.target.closest('[data-coach-video-filter]'); if (!filter) return;
   coachVideoFilter = filter.dataset.coachVideoFilter;
   const student = coachAuthResult?.students?.find((item) => item.id === activeStudentId); if (student) selectCoachStudent(student);
 });
 document.addEventListener('click', (event) => { if (event.target.closest('[data-auth-logout]')) { sessionStorage.removeItem(AUTH_SESSION_KEY); window.google?.accounts?.id?.disableAutoSelect(); location.reload(); } const studentButton = event.target.closest('[data-coach-student]'); if (studentButton && authenticatedUser) { const name = studentButton.querySelector('strong').textContent; const email = studentButton.querySelector('small').textContent; selectCoachStudent({ id: studentButton.dataset.coachStudent, name, email }); } if (event.target.closest('[data-coach-open-calendar]')) openCoachStudentWorkspace('#calendar'); if (event.target.closest('[data-coach-new-session]')) { openCoachStudentWorkspace('#calendar'); openSessionForm(); } if (event.target.closest('[data-coach-open-videos]')) openCoachStudentWorkspace('#videos'); if (event.target.closest('[data-coach-back]')) { document.querySelector('.shell').hidden = true; document.querySelector('#coach-context-bar').hidden = true; document.querySelector('#coach-console').hidden = false; if (coachAuthResult?.students?.[0]) selectCoachStudent(coachAuthResult.students.find((student) => student.id === activeStudentId) || coachAuthResult.students[0]); } const sessionButton = event.target.closest('[data-coach-session]'); if (sessionButton) { const session = getSessions().find((item) => item.id === sessionButton.dataset.coachSession); if (session) { openCoachStudentWorkspace('#calendar'); openWorkout(session); } } const reviewButton = event.target.closest('[data-coach-video-status]'); if (reviewButton) { const card = reviewButton.closest('[data-coach-video-card]'); const records = videoRecords(); const video = records.find((item) => item.id === card.dataset.coachVideoCard); if (!video) return; video.status = reviewButton.dataset.coachVideoStatus; video.coachComment = card.querySelector('[data-coach-video-comment]').value.trim(); video.reviewedAt = new Date().toISOString(); video.modifiedAt = video.reviewedAt; localStorage.setItem('exercise-video-registry', JSON.stringify(records)); queueSharedWrite('video-upsert', video); const student = coachAuthResult?.students?.find((item) => item.id === activeStudentId); if (student) selectCoachStudent(student); } });
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
+  const openButton = event.target.closest('[data-open-shared-video]');
+  if (openButton) {
+    const record = videoRecords().find((item) => item.id === openButton.dataset.openSharedVideo);
+    const session = record && getSessions().find((item) => item.id === record.sessionId);
+    if (session) { openWorkout(session); return; }
+    window.alert('La séance associée à ce média est introuvable.'); return;
+  }
   const button = event.target.closest('[data-delete-shared-video]'); if (!button) return;
   const id = button.dataset.deleteSharedVideo; if (!window.confirm('Supprimer cette vidéo et son retour coach ?')) return;
+  const record = videoRecords().find((item) => item.id === id);
+  try { await deleteStoredMedia(record); } catch (error) { window.alert(`Le fichier n’a pas pu être supprimé : ${error.message}`); return; }
   localStorage.setItem('exercise-video-registry', JSON.stringify(videoRecords().filter((item) => item.id !== id)));
   queueSharedWrite('video-delete', { id, modifiedAt: new Date().toISOString() });
   renderCoachActivity(); renderVideoLibrary();
@@ -307,6 +355,7 @@ function mergeSharedSnapshot(snapshot) {
   deletedSessionIds.forEach((id) => { localSessionMap.delete(id); delete overrides[id]; hidden.add(id); }); saveSessions([...localSessionMap.values()]); localStorage.setItem('session-overrides', JSON.stringify(overrides)); localStorage.setItem('hidden-sessions', JSON.stringify([...hidden]));
   localStorage.setItem('shared-backend-last-sync', new Date().toISOString()); localStorage.setItem(`shared-backend-snapshot-at-${activeStudentId}`, snapshot.generatedAt || new Date().toISOString()); if (snapshot.revision) localStorage.setItem(`shared-backend-revision-${activeStudentId}`, snapshot.revision); setSharedStatus('À jour', 'ok');
   scheduleDataRender();
+  if (authenticatedUser?.role === 'coach') { const student = coachAuthResult?.students?.find((item) => item.id === activeStudentId); if (student) selectCoachStudent(student); }
   if (snapshot.partial) return;
   const remoteProgressIds = new Set(Object.keys(snapshot.progress || {})); const remoteVideoIds = new Set((snapshot.videos || []).map((item) => item.id)); const remoteExerciseIds = new Set((snapshot.exercises || []).map((item) => item.id)); const remoteSessionIds = new Set(remoteSessions.map((item) => item.id));
   const sessions = new Map(getSessions().map((session) => [session.id, session])); const missingProgress = [];
@@ -368,7 +417,7 @@ function renderCurrentDateLabel() {
   label.textContent = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(now).toLocaleUpperCase('fr-FR');
 }
 renderCurrentDateLabel();
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') renderCurrentDateLabel(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { renderCurrentDateLabel(); refreshGoogleCredentialIfNeeded(); } });
 function closeAppearance() { applyAppearance(appearanceSettings()); settingsDialog.close(); }
 document.querySelector('[data-close-settings]').addEventListener('click', closeAppearance);
 settingsDialog.addEventListener('click', (event) => { if (event.target === settingsDialog) closeAppearance(); });
@@ -558,7 +607,7 @@ function unresolvedSheetLabels() {
 function renderSessionExerciseOptions(selectedExercises = []) {
   const selected = new Map(selectedExercises.map((exercise) => [exerciseMatchKey(exercise), typeof exercise === 'string' ? { seriesCount: 3 } : exercise]));
   document.querySelector('#session-exercise-options').innerHTML = getDisplayExercises().map((exercise) => {
-    const current = selected.get(exerciseMatchKey(exercise)); const checked = Boolean(current); const count = current?.seriesCount || current?.targets?.length || 3;
+    const current = selected.get(exerciseMatchKey(exercise)); const checked = Boolean(current); const count = plannedSeriesCount(current) || 3;
     return `<label class="session-exercise-option"><input type="checkbox" data-session-exercise="${escapeHtml(exercise.id)}" ${checked ? 'checked' : ''} /><span><strong>${escapeHtml(exercise.name)}</strong><small>${exercise.metrics.map((metric) => labels[metric]).join(' · ')}</small></span><span class="series-choice">Séries <input type="number" min="1" max="20" value="${count}" data-series-for="${escapeHtml(exercise.id)}" ${checked ? '' : 'disabled'} /></span></label>`;
   }).join('');
 }
@@ -872,7 +921,7 @@ function renderCalendar() {
     const state = iso === today ? 'today' : iso < today ? 'past' : 'upcoming';
     const outside = calendarView === 'month' && date.getMonth() !== calendarDate.getMonth() ? ' outside' : '';
     const sessionsForDay = sessionsByDate.get(iso) || [];
-    const cards = sessionsForDay.map((session) => { const completion = sessionCompletion(session); const steps = dailySteps[session.date]; return `<button type="button" class="calendar-session ${session.isRest ? 'rest-session' : session.isFreeSession ? 'free-session' : `completion-${completion.state}`}" data-workout-id="${session.id}"><strong>${session.videoRequired ? '🎬 ' : ''}${escapeHtml(session.name)}</strong><span>${session.isRest ? `👟 ${steps ? Number(steps).toLocaleString('fr-FR') : '—'} pas` : session.exercises?.length ? session.exercises.map((exercise) => { const raw = typeof exercise === 'string' ? exercise : exercise.name; return escapeHtml(canonicalExerciseName(exerciseKey(raw), raw)); }).join(' · ') : 'Voir la séance'}</span>${completion.total && completion.completed ? `<small>${completion.completed}/${completion.total} exercice${completion.total > 1 ? 's' : ''}</small>` : ''}${session.videoRequired ? '<b class="film-badge">À FILMER</b>' : ''}</button>`; }).join('');
+    const cards = sessionsForDay.map((session) => { const completion = sessionCompletion(session); const steps = dailySteps[session.date]; return `<button type="button" class="calendar-session ${session.isRest ? 'rest-session' : session.isFreeSession ? 'free-session' : `completion-${completion.state}`}" data-workout-id="${session.id}"><strong>${session.videoRequired ? '🎬 ' : ''}${escapeHtml(session.name)}</strong><span>${session.isRest ? `👟 ${steps ? Number(steps).toLocaleString('fr-FR') : '—'} pas` : session.exercises?.length ? session.exercises.map((exercise) => { const raw = typeof exercise === 'string' ? exercise : exercise.name; const count = plannedSeriesCount(exercise); return `${escapeHtml(canonicalExerciseName(exerciseKey(raw), raw))}${count ? ` · ${count} série${count > 1 ? 's' : ''}` : ''}`; }).join(' • ') : 'Voir la séance'}</span>${completion.total && completion.completed ? `<small>${completion.completed}/${completion.total} exercice${completion.total > 1 ? 's' : ''}</small>` : ''}${session.videoRequired ? '<b class="film-badge">À FILMER</b>' : ''}</button>`; }).join('');
     const daySessions = sessionsForDay.filter((session) => !session.isRest);
     const dayStates = daySessions.map((session) => sessionCompletion(session).state);
     const dayCompletion = !dayStates.length ? '' : dayStates.every((item) => item === 'complete') ? ' day-complete' : dayStates.some((item) => item !== 'none') ? ' day-progress' : ' day-none';
@@ -891,14 +940,19 @@ document.querySelector('#session-form').addEventListener('submit', (event) => {
   const isRestPreset = preset === 'Repos'; const isFreePreset = preset === 'Séance libre';
   const editId = document.querySelector('#session-edit-id').value; const existing = editId ? getSessions().find((item) => item.id === editId) : null;
   const chosen = isRestPreset ? [] : [...document.querySelectorAll('[data-session-exercise]:checked')]; const available = getDisplayExercises();
-  const exerciseDrafts = chosen.map((input) => { const exercise = available.find((item) => item.id === input.dataset.sessionExercise); const seriesCount = Number(document.querySelector(`[data-series-for="${input.dataset.sessionExercise}"]`).value) || 1; const metric = exercise.metrics.includes('tension') && !exercise.metrics.includes('repetitions') ? 'seconds' : 'repetitions'; return { name: exercise.name, metric, seriesCount, targets: Array(seriesCount).fill(0), matchKey: exercise.matchKey || exerciseKey(exercise.name) }; });
-  const existingExercises = existing?.exercises || []; const unchangedExercises = exerciseDrafts.length === existingExercises.length && exerciseDrafts.every((draft) => existingExercises.some((exercise) => exerciseMatchKey(exercise) === exerciseMatchKey(draft) && Number(exercise.seriesCount || exercise.targets?.length || 1) === draft.seriesCount));
-  const exercises = unchangedExercises ? existingExercises : exerciseDrafts;
+  const exerciseDrafts = chosen.map((input) => { const exercise = available.find((item) => item.id === input.dataset.sessionExercise); const seriesCount = normalizeSeriesCount(document.querySelector(`[data-series-for="${input.dataset.sessionExercise}"]`).value); const metric = exercise.metrics.includes('tension') && !exercise.metrics.includes('repetitions') ? 'seconds' : 'repetitions'; return { name: exercise.name, metric, seriesCount, targets: Array(seriesCount).fill(0), matchKey: exercise.matchKey || exerciseKey(exercise.name) }; });
+  const existingExercises = existing?.exercises || [];
+  const exercises = reconcileSessionExercises(existingExercises, exerciseDrafts);
   const error = document.querySelector('#session-error'); if (!name) { error.textContent = 'Choisis un type ou saisis un titre complémentaire.'; return; } if (!exercises.length && !isRestPreset && !isFreePreset) { error.textContent = 'Sélectionne au moins un exercice.'; return; }
   const session = { id: editId || `session-${Date.now()}`, source: existing?.source || 'manual', date: data.get('date'), name, duration: Number(data.get('duration') || event.currentTarget.dataset.templateDuration) || null, energy: Number(data.get('energy') || event.currentTarget.dataset.templateEnergy) || null, instructions: data.get('instructions').trim(), exercises, isRest: isRestPreset, isFreeSession: isFreePreset, modifiedAt: new Date().toISOString() };
+  if (existing) {
+    const allProgress = readStore('workout-progress', {}); const currentProgress = allProgress[editId];
+    if (currentProgress) { allProgress[editId] = { ...remapSessionProgress(currentProgress, existingExercises, exercises), modifiedAt: session.modifiedAt }; localStorage.setItem('workout-progress', JSON.stringify(allProgress)); }
+  }
   if (existing?.source === 'google-sheet') { const sheetSession = readStore('sheet-sessions', []).find((item) => item.id === editId) || existing; const comparableSheetSession = { ...sheetSession, instructions: sheetSession.instructions ?? sheetSession.coachInfo ?? '' }; const overrides = readStore('session-overrides', {}); overrides[editId] = buildSessionOverride(comparableSheetSession, session, session.modifiedAt); localStorage.setItem('session-overrides', JSON.stringify(overrides)); }
   else { const sessions = readStore('calisthenics-sessions', defaultSessions); const index = sessions.findIndex((item) => item.id === session.id); if (index >= 0) sessions[index] = session; else sessions.push(session); saveSessions(sessions); }
   queueSharedWrite('session-upsert', existing?.source === 'google-sheet' ? { ...session, overrideFields: readStore('session-overrides', {})[editId]?.overrideFields || [] } : session);
+  if (existing) { const updatedProgress = readStore('workout-progress', {})[editId]; if (updatedProgress) scheduleSharedProgress(session, updatedProgress); }
   if (event.currentTarget.dataset.mode === 'duplicate') calendarDate = new Date(`${session.date}T12:00:00`);
   renderCalendar(); renderExercises(); renderDashboard(); event.currentTarget.reset(); dialog.close();
 });
@@ -1198,7 +1252,7 @@ function openWorkout(session) {
     <div class="workout-management"><button type="button" data-edit-calendar-session>Modifier la séance</button><button type="button" data-duplicate-calendar-session>Dupliquer</button><button type="button" class="delete-session" data-delete-calendar-session>Supprimer</button></div>
     ${session.videoRequired ? '<div class="video-alert"><b>🎬 EXERCICES À FILMER</b></div>' : ''}
     <div class="coach-note ${coachNotes.length ? '' : 'empty-coach-note'}"><b>Consignes du coach</b><span>${coachNotes.length ? coachNotes.map(escapeHtml).join('<br>') : 'Aucune consigne renseignée pour cette séance.'}</span></div>
-    ${session.isRest ? `<div class="rest-metric"><span>👟</span><label>Nombre de pas<input id="rest-steps" type="number" min="0" step="1" value="${readStore('daily-steps', {})[session.date] || ''}" placeholder="À synchroniser" /></label><small>Saisie locale provisoire · connexion Samsung Health à venir</small></div>` : `<p class="help-text">Les valeurs déjà remplies dans le tableau sont automatiquement considérées comme réalisées. Tu peux les corriger ici si nécessaire.</p><div class="workout-exercises">${session.exercises.map((exercise, exerciseIndex) => { const previous = previousExerciseInWeek(session, exercise); const seriesCount = exercise.seriesCount || Math.max(10, exercise.targets.length); return `<section><div class="workout-exercise-title"><span><small>EXERCICE ${exerciseIndex + 1}</small><strong>${escapeHtml(exercise.name)}</strong></span><b>${exercise.metric === 'seconds' ? 'Secondes' : 'Répétitions'}</b></div><p class="previous-performance">${previous ? `Dernière fois cette semaine : <strong>${previous.values.join(' · ')} ${exercise.metric === 'seconds' ? 's' : 'rép.'}</strong>` : 'Première occurrence de cet exercice cette semaine.'}</p><div class="set-scroll"><div class="set-list">${Array.from({ length: seriesCount }, (_, setIndex) => { const target = exercise.targets[setIndex] || 0; const recorded = current.values?.[exerciseIndex]?.[setIndex] ?? (target || undefined); return `<label><span>Série ${setIndex + 1}${target ? `<small>tableau : ${target} ${exercise.metric === 'seconds' ? 's' : 'rép.'}</small>` : '<small>série à renseigner</small>'}</span><select data-progress-exercise="${exerciseIndex}" data-progress-set="${setIndex}">${selectOptions(target, exercise.metric, recorded)}</select></label>`; }).join('')}</div></div></section>`; }).join('')}</div>`}
+    ${session.isRest ? `<div class="rest-metric"><span>👟</span><label>Nombre de pas<input id="rest-steps" type="number" min="0" step="1" value="${readStore('daily-steps', {})[session.date] || ''}" placeholder="À synchroniser" /></label><small>Saisie locale provisoire · connexion Samsung Health à venir</small></div>` : `<p class="help-text">Les valeurs déjà remplies dans le tableau sont automatiquement considérées comme réalisées. Tu peux les corriger ici si nécessaire.</p><div class="workout-exercises">${session.exercises.map((exercise, exerciseIndex) => { const previous = previousExerciseInWeek(session, exercise); const seriesCount = plannedSeriesCount(exercise) || 10; return `<section><div class="workout-exercise-title"><span><small>EXERCICE ${exerciseIndex + 1} · ${seriesCount} SÉRIE${seriesCount > 1 ? 'S' : ''}</small><strong>${escapeHtml(exercise.name)}</strong></span><b>${exercise.metric === 'seconds' ? 'Secondes' : 'Répétitions'}</b></div><p class="previous-performance">${previous ? `Dernière fois cette semaine : <strong>${previous.values.join(' · ')} ${exercise.metric === 'seconds' ? 's' : 'rép.'}</strong>` : 'Première occurrence de cet exercice cette semaine.'}</p><div class="set-scroll"><div class="set-list">${Array.from({ length: seriesCount }, (_, setIndex) => { const target = exercise.targets[setIndex] || 0; const recorded = current.values?.[exerciseIndex]?.[setIndex] ?? (target || undefined); return `<label><span>Série ${setIndex + 1}${target ? `<small>tableau : ${target} ${exercise.metric === 'seconds' ? 's' : 'rép.'}</small>` : '<small>série à renseigner</small>'}</span><select data-progress-exercise="${exerciseIndex}" data-progress-set="${setIndex}">${selectOptions(target, exercise.metric, recorded)}</select></label>`; }).join('')}</div></div></section>`; }).join('')}</div>`}
     <label class="student-comment">Commentaire élève<textarea id="student-comment" rows="4" placeholder="Comment s’est passée cette séance ?">${escapeHtml(studentComment)}</textarea></label><p class="comment-source">${session.studentInfo ? 'Commentaire initial synchronisé depuis « Infos élève » du tableau.' : 'Tu peux renseigner ton retour directement ici.'}</p><p class="save-hint" id="save-hint">Tes réponses sont enregistrées automatiquement sur cet appareil.</p>`;
   workoutDialog.dataset.sessionId = session.id; workoutDialog.showModal();
   renderWorkoutVideoTools(session);
@@ -1210,9 +1264,72 @@ function youtubeVideoId(url) {
 }
 function videoRecords() { return readStore('exercise-video-registry', []); }
 function youtubePlayer(url, title) { const id = youtubeVideoId(url); return id ? `<div class="youtube-mini"><button type="button" class="youtube-load" data-youtube-id="${escapeHtml(id)}" data-youtube-title="${escapeHtml(title)}"><span>▶</span><strong>Lire la vidéo</strong><small>YouTube non répertorié</small></button></div>` : ''; }
+function mediaObjectUrl(mediaId) { return `${MEDIA_API_URL}/media/${encodeURIComponent(String(mediaId || ''))}`; }
+async function mediaRequest(objectKey, options = {}) {
+  const response = await fetch(mediaObjectUrl(objectKey), { ...options, headers: { Authorization: `Bearer ${currentGoogleCredential()}`, 'X-Student-Id': activeStudentId || 'student-owner', ...(options.headers || {}) } });
+  if (!response.ok) { let message = `Service média HTTP ${response.status}`; try { message = (await response.json()).error || message; } catch {} throw new Error(message); }
+  return response;
+}
+function formatMediaBytes(bytes) {
+  const value = Number(bytes || 0); if (!value) return '0 octet';
+  const units = ['octets', 'Ko', 'Mo', 'Go']; const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / (1024 ** index)).toLocaleString('fr-FR', { maximumFractionDigits: index ? 1 : 0 })} ${units[index]}`;
+}
+function uploadMediaObject(objectKey, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest(); request.open('PUT', mediaObjectUrl(objectKey)); request.timeout = 5 * 60 * 1000;
+    request.setRequestHeader('Authorization', `Bearer ${currentGoogleCredential()}`);
+    request.setRequestHeader('X-Student-Id', activeStudentId || 'student-owner');
+    request.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    request.upload.addEventListener('progress', (event) => { if (event.lengthComputable && onProgress) onProgress(event.loaded, event.total); });
+    request.addEventListener('load', () => {
+      if (request.status >= 200 && request.status < 300) { try { resolve(JSON.parse(request.responseText)); } catch { resolve({ ok: true }); } return; }
+      let message = `Service média HTTP ${request.status}`;
+      try { message = JSON.parse(request.responseText).error || message; } catch {}
+      reject(new Error(message));
+    });
+    request.addEventListener('error', () => reject(new Error('Connexion au stockage interrompue.')));
+    request.addEventListener('timeout', () => reject(new Error('L’envoi a dépassé 5 minutes. Essaie avec un fichier plus léger.')));
+    request.send(file);
+  });
+}
+async function uploadExerciseMedia(file, record, onProgress) {
+  if (!currentGoogleCredential()) throw new Error('Reconnecte-toi avec Google avant l’envoi.');
+  if (file.size > MAX_MEDIA_FILE_SIZE) throw new Error(`Le fichier fait ${formatMediaBytes(file.size)} et dépasse la limite de 95 Mo.`);
+  const mediaId = String(record.id || `media-${Date.now()}`).replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 120);
+  const result = await uploadMediaObject(mediaId, file, onProgress);
+  return { objectKey: mediaId, fileName: file.name || 'media', mimeType: result.contentType || file.type || 'application/octet-stream', size: Number(result.size || file.size), mediaType: String(result.contentType || file.type || '').startsWith('audio/') ? 'audio' : 'video' };
+}
+function voiceRecordingKey(sessionId, exerciseIndex) { return `${sessionId}|${exerciseIndex}`; }
+function preferredAudioMimeType() {
+  return ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || '';
+}
+function stopVoiceRecording(key, discard = false) {
+  const state = voiceRecordings.get(key); if (!state) return;
+  clearInterval(state.timer); state.stream?.getTracks().forEach((track) => track.stop());
+  if (discard) { state.discarded = true; if (state.url) URL.revokeObjectURL(state.url); if (state.recorder?.state === 'recording') state.recorder.stop(); voiceRecordings.delete(key); }
+  else if (state.recorder?.state === 'recording') state.recorder.stop();
+}
+function stopAllVoiceRecordings() { [...voiceRecordings.keys()].forEach((key) => stopVoiceRecording(key, true)); }
+function exerciseMediaRecord(session, exerciseIndex, prefix = 'media') {
+  const exercise = session.exercises[exerciseIndex]; const rawExerciseName = typeof exercise === 'string' ? exercise : exercise.name; const now = new Date().toISOString();
+  return { id: `${prefix}-${Date.now()}`, sessionId: session.id, sessionName: session.name, date: session.date, exerciseIndex, exerciseKey: exerciseMatchKey(exercise), exerciseName: canonicalExerciseName(exerciseMatchKey(exercise), rawExerciseName), url: '', status: 'coach-review', studentId: activeStudentId || 'student-owner', addedAt: now, modifiedAt: now };
+}
+async function deleteStoredMedia(record) { if (record?.objectKey) await mediaRequest(record.objectKey, { method: 'DELETE' }); }
+function storedMediaPlayer(record, title) {
+  if (!record?.objectKey) return youtubePlayer(record?.url, title);
+  const tag = record.mediaType === 'audio' || String(record.mimeType || '').startsWith('audio/') ? 'audio' : 'video';
+  return `<div class="stored-media" data-private-media="${escapeHtml(record.objectKey)}" data-private-media-type="${tag}" data-private-media-title="${escapeHtml(title)}"><button type="button" data-load-private-media><span>${tag === 'audio' ? '♪' : '▶'}</span><strong>Charger ${tag === 'audio' ? 'l’audio' : 'la vidéo'}</strong><small>${escapeHtml(record.fileName || 'Fichier privé')}</small></button></div>`;
+}
 document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-youtube-id]'); if (!button) return; const container = button.closest('.youtube-mini');
   container.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${escapeHtml(button.dataset.youtubeId)}?autoplay=1" title="${escapeHtml(button.dataset.youtubeTitle)}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+});
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-load-private-media]'); if (!button) return;
+  const container = button.closest('[data-private-media]'); button.disabled = true; button.querySelector('strong').textContent = 'Chargement…';
+  try { const response = await mediaRequest(container.dataset.privateMedia); const blobUrl = URL.createObjectURL(await response.blob()); const tag = container.dataset.privateMediaType === 'audio' ? 'audio' : 'video'; container.innerHTML = `<${tag} controls playsinline src="${blobUrl}" aria-label="${escapeHtml(container.dataset.privateMediaTitle)}"></${tag}>`; }
+  catch (error) { button.disabled = false; button.querySelector('strong').textContent = error.message; }
 });
 function renderWorkoutVideoTools(session) {
   document.querySelectorAll('#workout-content .workout-video-tools').forEach((item) => item.remove());
@@ -1220,48 +1337,81 @@ function renderWorkoutVideoTools(session) {
   document.querySelectorAll('#workout-content .workout-exercises > section').forEach((section, exerciseIndex) => {
     const exercise = session.exercises[exerciseIndex]; if (!exercise) return; const key = exerciseMatchKey(exercise); const exerciseName = canonicalExerciseName(key, typeof exercise === 'string' ? exercise : exercise.name);
     const attached = records.filter((item) => item.sessionId === session.id && Number(item.exerciseIndex) === exerciseIndex);
-    section.insertAdjacentHTML('beforeend', `<div class="workout-video-tools"><div class="video-tool-heading"><span><b>🎬 Vidéos de cet exercice</b><small>Les liens YouTube non répertoriés sont acceptés.</small></span><em>${attached.length ? 'Suivi coach actif' : 'Aucune vidéo'}</em></div><div class="video-add-row"><input type="url" data-video-url="${exerciseIndex}" placeholder="Coller un lien YouTube…"><button type="button" data-add-exercise-video="${exerciseIndex}">Ajouter</button></div><p class="video-field-error" data-video-error="${exerciseIndex}"></p>${attached.map((item) => { const review = videoReviewLabel(item); return `<article class="session-video video-review-${review.tone}">${youtubePlayer(item.url, exercise.name)}<div class="student-video-review"><span><b>${escapeHtml(review.label)}</b>${review.message ? `<small>${escapeHtml(review.message)}</small>` : ''}</span><span><a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">YouTube ↗</a><button type="button" data-delete-exercise-video="${item.id}">Supprimer</button></span></div></article>`; }).join('')}</div>`);
+    section.insertAdjacentHTML('beforeend', `<div class="workout-video-tools"><div class="video-tool-heading"><span><b>🎬 Médias de cet exercice</b><small>Envoie une vidéo ou un fichier audio privé, ou enregistre directement une note vocale.</small></span><em>${attached.length ? 'Suivi coach actif' : 'Aucun média'}</em></div><div class="voice-recorder" data-voice-recorder="${exerciseIndex}"><div><button type="button" data-start-voice="${exerciseIndex}">🎙 Enregistrer une note vocale</button><button type="button" data-stop-voice="${exerciseIndex}" disabled>■ Arrêter</button><output data-voice-time="${exerciseIndex}">00:00</output></div><audio controls data-voice-preview="${exerciseIndex}" hidden></audio><button type="button" data-send-voice="${exerciseIndex}" hidden>Envoyer la note vocale</button></div><div class="media-upload-row"><input type="file" accept="video/*,audio/*" data-media-file="${exerciseIndex}"><button type="button" data-upload-exercise-media="${exerciseIndex}">Envoyer le fichier</button></div><p class="video-field-error" data-video-error="${exerciseIndex}"></p>${attached.map((item) => { const review = videoReviewLabel(item); return `<article class="session-video video-review-${review.tone}">${storedMediaPlayer(item, exercise.name)}<div class="student-video-review"><span><b>${escapeHtml(review.label)}</b>${review.message ? `<small>${escapeHtml(review.message)}</small>` : ''}</span><span>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">YouTube ↗</a>` : ''}<button type="button" data-delete-exercise-video="${item.id}">Supprimer</button></span></div></article>`; }).join('')}</div>`);
   });
 }
 function openVideoRegistry(exercise) {
   const records = videoRecords().filter((item) => item.exerciseKey === exercise.id).sort((a, b) => b.date.localeCompare(a.date));
-  document.querySelector('#video-registry-content').innerHTML = `<p class="kicker">REGISTRE VIDÉO</p><h2>${escapeHtml(exercise.name)}</h2><p class="help-text">Toutes les vidéos ajoutées depuis les séances du calendrier, classées de la plus récente à la plus ancienne.</p>${records.length ? `<div class="video-registry-list">${records.map((item) => `<article>${youtubePlayer(item.url, `${exercise.name} — ${item.date}`)}<div class="video-registry-meta"><span><strong>${new Date(`${item.date}T12:00`).toLocaleDateString('fr-FR')}</strong><small>${escapeHtml(item.sessionName)} · À revoir par le coach</small></span><a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">YouTube ↗</a></div></article>`).join('')}</div>` : '<div class="empty-progress"><strong>Aucune vidéo enregistrée</strong><p>Ajoute une vidéo depuis une séance du calendrier.</p></div>'}`;
+  document.querySelector('#video-registry-content').innerHTML = `<p class="kicker">REGISTRE VIDÉO</p><h2>${escapeHtml(exercise.name)}</h2><p class="help-text">Tous les médias ajoutés depuis les séances du calendrier, classés de la plus récente à la plus ancienne.</p>${records.length ? `<div class="video-registry-list">${records.map((item) => `<article>${storedMediaPlayer(item, `${exercise.name} — ${item.date}`)}<div class="video-registry-meta"><span><strong>${new Date(`${item.date}T12:00`).toLocaleDateString('fr-FR')}</strong><small>${escapeHtml(item.sessionName)} · À revoir par le coach</small></span>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">YouTube ↗</a>` : '<small>Fichier privé</small>'}</div></article>`).join('')}</div>` : '<div class="empty-progress"><strong>Aucun média enregistré</strong><p>Ajoute un média depuis une séance du calendrier.</p></div>'}`;
   videoRegistryDialog.showModal();
 }
 function videoRecordExercise(record, catalog = getExercises()) { return catalog.find((item) => item.id === record.exerciseKey) || { id: record.exerciseKey, name: record.exerciseName || 'Exercice à classer', category: 'À classer', subcategory: '' }; }
-function datedVideoCards(records, catalog) { return `<div class="dated-video-grid">${records.map((item) => { const exercise = videoRecordExercise(item, catalog); const review = videoReviewLabel(item); return `<article>${youtubePlayer(item.url, `${exercise.name} — ${item.date}`)}<div><span><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(review.label)}</small></span><span class="video-library-actions"><a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">YouTube ↗</a><button type="button" data-delete-shared-video="${escapeHtml(item.id)}">Supprimer</button></span></div></article>`; }).join('')}</div>`; }
+function datedVideoCards(records, catalog) { return `<div class="dated-video-grid">${records.map((item) => { const exercise = videoRecordExercise(item, catalog); const review = videoReviewLabel(item); return `<article>${storedMediaPlayer(item, `${exercise.name} — ${item.date}`)}<div><span><b>${escapeHtml(exercise.name)}</b><small>${escapeHtml(review.label)}</small></span><span class="video-library-actions">${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">YouTube ↗</a>` : '<small>Privé</small>'}<button type="button" data-delete-shared-video="${escapeHtml(item.id)}">Supprimer</button></span></div></article>`; }).join('')}</div>`; }
 function chronologicalVideoTree(records, catalog) {
   const dates = new Map(); records.forEach((record) => { if (!dates.has(record.date)) dates.set(record.date, []); dates.get(record.date).push(record); });
   return [...dates.entries()].map(([date, items]) => `<details class="video-folder date-folder"><summary><span class="folder-icon">▱</span><span><strong>${new Date(`${date}T12:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong><small>${items.length} vidéo(s) · ${[...new Set(items.map((item) => item.sessionName))].map(escapeHtml).join(' · ')}</small></span><b>＋</b></summary><div class="folder-content">${datedVideoCards(items, catalog)}</div></details>`).join('');
 }
 function renderVideoLibrary() {
   const records = [...videoRecords()].sort((a, b) => b.date.localeCompare(a.date) || String(b.addedAt || '').localeCompare(String(a.addedAt || ''))); const catalog = getExercises(); const tree = new Map();
-  document.querySelector('#video-recent-strip').innerHTML = records.length ? records.slice(0, 4).map((item) => { const exercise = videoRecordExercise(item, catalog); const review = videoReviewLabel(item); return `<article>${youtubePlayer(item.url, `${exercise.name} — ${item.date}`)}<div><strong>${escapeHtml(exercise.name)}</strong><span>${new Date(`${item.date}T12:00`).toLocaleDateString('fr-FR')} · ${escapeHtml(item.sessionName)}</span><div class="video-library-actions"><small>${escapeHtml(review.label)}</small><button type="button" data-delete-shared-video="${escapeHtml(item.id)}">Supprimer</button></div></div></article>`; }).join('') : '<p class="empty-state">Les dernières vidéos apparaîtront ici.</p>';
+  document.querySelector('#video-recent-strip').innerHTML = records.length ? records.slice(0, 4).map((item) => { const exercise = videoRecordExercise(item, catalog); const review = videoReviewLabel(item); return `<article>${storedMediaPlayer(item, `${exercise.name} — ${item.date}`)}<div><strong>${escapeHtml(exercise.name)}</strong><span>${new Date(`${item.date}T12:00`).toLocaleDateString('fr-FR')} · ${escapeHtml(item.sessionName)}</span><div class="video-library-actions"><small>${escapeHtml(review.label)}</small><button type="button" data-delete-shared-video="${escapeHtml(item.id)}">Supprimer</button></div></div></article>`; }).join('') : '<p class="empty-state">Les derniers médias apparaîtront ici.</p>';
   records.forEach((record) => {
     const exercise = catalog.find((item) => item.id === record.exerciseKey) || { id: record.exerciseKey, name: record.exerciseName || 'Exercice à classer', category: 'À classer', subcategory: '' };
     if (!tree.has(exercise.category)) tree.set(exercise.category, new Map()); const family = tree.get(exercise.category);
     if (!family.has(exercise.id)) family.set(exercise.id, { exercise, records: [] }); family.get(exercise.id).records.push(record);
   });
   document.querySelector('#video-library-count').textContent = `${records.length} vidéo${records.length > 1 ? 's' : ''}`;
-  if (videoLibraryMode === 'date') { document.querySelector('#video-library-tree').innerHTML = records.length ? chronologicalVideoTree(records, catalog) : '<div class="video-library-empty"><span>▶</span><strong>Aucune vidéo enregistrée</strong><p>Ouvre une séance du calendrier puis ajoute un lien YouTube sous l’exercice concerné.</p></div>'; return; }
-  document.querySelector('#video-library-tree').innerHTML = records.length ? [...tree.entries()].map(([category, exercises]) => `<details class="video-folder family-folder"><summary><span class="folder-icon">▰</span><span><strong>${escapeHtml(category)}</strong><small>${[...exercises.values()].reduce((sum, item) => sum + item.records.length, 0)} vidéo(s)</small></span><b>＋</b></summary><div class="folder-content">${[...exercises.values()].map(({ exercise, records: exerciseRecords }) => { const dates = new Map(); exerciseRecords.forEach((record) => { if (!dates.has(record.date)) dates.set(record.date, []); dates.get(record.date).push(record); }); return `<details class="video-folder exercise-folder"><summary><span class="folder-icon">▰</span><span><strong>${escapeHtml(exercise.name)}</strong><small>${escapeHtml(exercise.subcategory || 'Exercice principal')} · ${exerciseRecords.length} vidéo(s)</small></span><b>＋</b></summary><div class="folder-content">${[...dates.entries()].map(([date, dateRecords]) => `<details class="video-folder date-folder"><summary><span class="folder-icon">▱</span><span><strong>${new Date(`${date}T12:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</strong><small>${dateRecords.map((item) => escapeHtml(item.sessionName)).join(' · ')}</small></span><b>＋</b></summary><div class="dated-video-grid">${dateRecords.map((item) => `<article>${youtubePlayer(item.url, `${exercise.name} — ${date}`)}<div><span>À revoir par le coach</span><a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">YouTube ↗</a></div></article>`).join('')}</div></details>`).join('')}</div></details>`; }).join('')}</div></details>`).join('') : '<div class="video-library-empty"><span>▶</span><strong>Aucune vidéo enregistrée</strong><p>Ouvre une séance du calendrier puis ajoute un lien YouTube sous l’exercice concerné.</p></div>';
+  if (videoLibraryMode === 'date') { document.querySelector('#video-library-tree').innerHTML = records.length ? chronologicalVideoTree(records, catalog) : '<div class="video-library-empty"><span>▶</span><strong>Aucun média enregistré</strong><p>Ouvre une séance du calendrier puis envoie une vidéo, un audio ou une note vocale.</p></div>'; return; }
+  document.querySelector('#video-library-tree').innerHTML = records.length ? [...tree.entries()].map(([category, exercises]) => `<details class="video-folder family-folder"><summary><span class="folder-icon">▰</span><span><strong>${escapeHtml(category)}</strong><small>${[...exercises.values()].reduce((sum, item) => sum + item.records.length, 0)} média(s)</small></span><b>＋</b></summary><div class="folder-content">${[...exercises.values()].map(({ exercise, records: exerciseRecords }) => { const dates = new Map(); exerciseRecords.forEach((record) => { if (!dates.has(record.date)) dates.set(record.date, []); dates.get(record.date).push(record); }); return `<details class="video-folder exercise-folder"><summary><span class="folder-icon">▰</span><span><strong>${escapeHtml(exercise.name)}</strong><small>${escapeHtml(exercise.subcategory || 'Exercice principal')} · ${exerciseRecords.length} média(s)</small></span><b>＋</b></summary><div class="folder-content">${[...dates.entries()].map(([date, dateRecords]) => `<details class="video-folder date-folder"><summary><span class="folder-icon">▱</span><span><strong>${new Date(`${date}T12:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</strong><small>${dateRecords.map((item) => escapeHtml(item.sessionName)).join(' · ')}</small></span><b>＋</b></summary>${datedVideoCards(dateRecords, catalog)}</details>`).join('')}</div></details>`; }).join('')}</div></details>`).join('') : '<div class="video-library-empty"><span>▶</span><strong>Aucun média enregistré</strong><p>Ouvre une séance du calendrier puis ajoute un média.</p></div>';
 }
 
 document.querySelector('.video-library-toolbar').addEventListener('click', (event) => { const button = event.target.closest('[data-video-library-mode]'); if (!button) return; videoLibraryMode = button.dataset.videoLibraryMode; document.querySelectorAll('[data-video-library-mode]').forEach((item) => item.classList.toggle('active', item === button)); renderVideoLibrary(); });
 calendarGrid.addEventListener('click', (event) => { const button = event.target.closest('[data-workout-id]'); if (button) { const session = getSessions().find((item) => item.id === button.dataset.workoutId); if (session) openWorkout(session); } });
 document.querySelector('#sessions .session-list').addEventListener('click', (event) => { const button = event.target.closest('[data-journal-session-id]'); if (!button) return; const session = getSessions().find((item) => item.id === button.dataset.journalSessionId); if (session) openWorkout(session); });
-document.querySelector('[data-close-workout]').addEventListener('click', () => workoutDialog.close());
-workoutDialog.addEventListener('click', (event) => { if (event.target === workoutDialog) workoutDialog.close(); });
-document.querySelector('#workout-content').addEventListener('click', (event) => {
+document.querySelector('[data-close-workout]').addEventListener('click', () => { stopAllVoiceRecordings(); workoutDialog.close(); });
+workoutDialog.addEventListener('click', (event) => { if (event.target === workoutDialog) { stopAllVoiceRecordings(); workoutDialog.close(); } });
+document.querySelector('#workout-content').addEventListener('click', async (event) => {
   const sessionId = workoutDialog.dataset.sessionId; const session = getSessions().find((item) => item.id === sessionId); if (!session) return;
-  const addVideo = event.target.closest('[data-add-exercise-video]');
-  if (addVideo) {
-    const exerciseIndex = Number(addVideo.dataset.addExerciseVideo); const input = document.querySelector(`[data-video-url="${exerciseIndex}"]`); const url = input.value.trim(); const error = document.querySelector(`[data-video-error="${exerciseIndex}"]`);
-    if (!youtubeVideoId(url)) { error.textContent = 'Colle un lien YouTube valide (youtube.com ou youtu.be).'; return; }
-    const exercise = session.exercises[exerciseIndex]; const rawExerciseName = typeof exercise === 'string' ? exercise : exercise.name; const records = videoRecords(); const now = new Date().toISOString(); const record = { id: `video-${Date.now()}`, sessionId, sessionName: session.name, date: session.date, exerciseIndex, exerciseKey: exerciseMatchKey(exercise), exerciseName: canonicalExerciseName(exerciseMatchKey(exercise), rawExerciseName), url, status: 'coach-review', studentId: activeStudentId || 'student-owner', addedAt: now, modifiedAt: now }; records.push(record); localStorage.setItem('exercise-video-registry', JSON.stringify(records)); queueSharedWrite('video-upsert', record); renderWorkoutVideoTools(session); renderVideoLibrary(); return;
+  const startVoice = event.target.closest('[data-start-voice]');
+  if (startVoice) {
+    const exerciseIndex = Number(startVoice.dataset.startVoice); const key = voiceRecordingKey(sessionId, exerciseIndex); const error = document.querySelector(`[data-video-error="${exerciseIndex}"]`);
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { error.textContent = 'L’enregistrement vocal n’est pas pris en charge par ce navigateur.'; return; }
+    try {
+      stopVoiceRecording(key, true); const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); const mimeType = preferredAudioMimeType(); const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined); const chunks = []; const startedAt = Date.now();
+      const state = { recorder, stream, chunks, mimeType: recorder.mimeType || mimeType || 'audio/webm', startedAt, timer: 0, blob: null, url: '' }; voiceRecordings.set(key, state);
+      const stopButton = document.querySelector(`[data-stop-voice="${exerciseIndex}"]`); const time = document.querySelector(`[data-voice-time="${exerciseIndex}"]`); const preview = document.querySelector(`[data-voice-preview="${exerciseIndex}"]`); const send = document.querySelector(`[data-send-voice="${exerciseIndex}"]`);
+      preview.hidden = true; send.hidden = true; startVoice.disabled = true; stopButton.disabled = false; error.textContent = 'Enregistrement en cours…';
+      recorder.addEventListener('dataavailable', (item) => { if (item.data.size) chunks.push(item.data); });
+      recorder.addEventListener('stop', () => { if (state.discarded) return; state.blob = new Blob(chunks, { type: state.mimeType }); state.url = URL.createObjectURL(state.blob); preview.src = state.url; preview.hidden = false; send.hidden = false; startVoice.disabled = false; stopButton.disabled = true; error.textContent = 'Note prête. Écoute-la puis envoie-la au coach.'; });
+      state.timer = setInterval(() => { const seconds = Math.floor((Date.now() - startedAt) / 1000); time.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`; }, 500); recorder.start(250);
+    } catch (recordError) { stopVoiceRecording(key, true); error.textContent = recordError.name === 'NotAllowedError' ? 'Accès au micro refusé. Autorise le micro dans les réglages du navigateur.' : `Impossible d’utiliser le micro : ${recordError.message}`; }
+    return;
+  }
+  const stopVoice = event.target.closest('[data-stop-voice]');
+  if (stopVoice) { stopVoiceRecording(voiceRecordingKey(sessionId, Number(stopVoice.dataset.stopVoice))); return; }
+  const sendVoice = event.target.closest('[data-send-voice]');
+  if (sendVoice) {
+    const exerciseIndex = Number(sendVoice.dataset.sendVoice); const key = voiceRecordingKey(sessionId, exerciseIndex); const state = voiceRecordings.get(key); const error = document.querySelector(`[data-video-error="${exerciseIndex}"]`);
+    if (!state?.blob?.size) { error.textContent = 'Enregistre d’abord une note vocale.'; return; }
+    const extension = state.mimeType.includes('mp4') ? 'm4a' : state.mimeType.includes('ogg') ? 'ogg' : 'webm'; const file = new File([state.blob], `note-vocale-${Date.now()}.${extension}`, { type: state.mimeType }); const record = exerciseMediaRecord(session, exerciseIndex, 'audio');
+    sendVoice.disabled = true; error.textContent = 'Envoi de la note vocale…';
+    try { Object.assign(record, await uploadExerciseMedia(file, record, (loaded, total) => { error.textContent = `Envoi : ${Math.min(100, Math.round((loaded / total) * 100))} %`; })); const records = videoRecords(); records.push(record); localStorage.setItem('exercise-video-registry', JSON.stringify(records)); queueSharedWrite('video-upsert', record); stopVoiceRecording(key, true); renderWorkoutVideoTools(session); renderVideoLibrary(); }
+    catch (uploadError) { sendVoice.disabled = false; error.textContent = `Échec de l’envoi : ${uploadError.message}`; }
+    return;
+  }
+  const uploadMedia = event.target.closest('[data-upload-exercise-media]');
+  if (uploadMedia) {
+    const exerciseIndex = Number(uploadMedia.dataset.uploadExerciseMedia); const input = document.querySelector(`[data-media-file="${exerciseIndex}"]`); const file = input.files?.[0]; const error = document.querySelector(`[data-video-error="${exerciseIndex}"]`);
+    if (!file) { error.textContent = 'Choisis d’abord une vidéo ou un fichier audio.'; return; }
+    if (!/^(video|audio)\//.test(file.type)) { error.textContent = 'Ce fichier n’est pas un média audio ou vidéo reconnu.'; return; }
+    if (file.size > MAX_MEDIA_FILE_SIZE) { error.textContent = `Le fichier fait ${formatMediaBytes(file.size)} et dépasse la limite de 95 Mo.`; return; }
+    const record = exerciseMediaRecord(session, exerciseIndex);
+    uploadMedia.disabled = true; error.textContent = `Préparation de ${file.name} (${formatMediaBytes(file.size)})…`;
+    try { Object.assign(record, await uploadExerciseMedia(file, record, (loaded, total) => { const percent = Math.min(100, Math.round((loaded / total) * 100)); error.textContent = `Envoi : ${percent} % — ${formatMediaBytes(loaded)} / ${formatMediaBytes(total)}`; })); const records = videoRecords(); records.push(record); localStorage.setItem('exercise-video-registry', JSON.stringify(records)); queueSharedWrite('video-upsert', record); error.textContent = 'Fichier envoyé avec succès.'; renderWorkoutVideoTools(session); renderVideoLibrary(); }
+    catch (uploadError) { error.textContent = `Échec de l’envoi : ${uploadError.message}`; uploadMedia.disabled = false; }
+    return;
   }
   const deleteVideo = event.target.closest('[data-delete-exercise-video]');
-  if (deleteVideo && window.confirm('Supprimer ce lien vidéo du registre ?')) { const id = deleteVideo.dataset.deleteExerciseVideo; localStorage.setItem('exercise-video-registry', JSON.stringify(videoRecords().filter((item) => item.id !== id))); queueSharedWrite('video-delete', { id, modifiedAt: new Date().toISOString() }); renderWorkoutVideoTools(session); renderVideoLibrary(); return; }
+  if (deleteVideo && window.confirm('Supprimer ce média du registre ?')) { const id = deleteVideo.dataset.deleteExerciseVideo; const record = videoRecords().find((item) => item.id === id); try { await deleteStoredMedia(record); } catch (error) { window.alert(`Le fichier n’a pas pu être supprimé : ${error.message}`); return; } localStorage.setItem('exercise-video-registry', JSON.stringify(videoRecords().filter((item) => item.id !== id))); queueSharedWrite('video-delete', { id, modifiedAt: new Date().toISOString() }); renderWorkoutVideoTools(session); renderVideoLibrary(); return; }
   if (event.target.closest('[data-edit-calendar-session]')) { workoutDialog.close(); openSessionForm(session); }
   if (event.target.closest('[data-duplicate-calendar-session]')) { workoutDialog.close(); openSessionForm(session, { duplicate: true }); }
   if (event.target.closest('[data-delete-calendar-session]') && window.confirm(`Supprimer « ${session.name} » du calendrier ?`)) {
@@ -1381,5 +1531,5 @@ if (sharedBackendReady()) setTimeout(() => { flushSharedOutbox(); loadSharedSnap
 setInterval(syncGoogleSheet, 15 * 60 * 1000);
 setInterval(() => { if (document.visibilityState === 'visible' && sharedBackendReady()) { flushSharedOutbox(); loadSharedSnapshot(true); } }, 15 * 60 * 1000);
 const applicationBootTime = Date.now();
-window.addEventListener('focus', () => { const last = new Date(localStorage.getItem('sheet-last-sync') || 0); if (Date.now() - applicationBootTime > 30000 && Date.now() - last.getTime() > 5 * 60 * 1000) syncGoogleSheet(); if (sharedBackendReady()) { flushSharedOutbox(); loadSharedSnapshot(); } });
+window.addEventListener('focus', () => { refreshGoogleCredentialIfNeeded(); const last = new Date(localStorage.getItem('sheet-last-sync') || 0); if (Date.now() - applicationBootTime > 30000 && Date.now() - last.getTime() > 5 * 60 * 1000) syncGoogleSheet(); if (sharedBackendReady()) { flushSharedOutbox(); loadSharedSnapshot(); } });
 if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch((error) => console.warn('Installation hors ligne indisponible', error)));
