@@ -32,6 +32,12 @@ assert.strictEqual(sync.googleCredentialExpiresAt(fakeCredential, decodeJwt), 20
 assert.strictEqual(sync.googleCredentialNeedsRefresh(fakeCredential, 1600000, decodeJwt), false);
 assert.strictEqual(sync.googleCredentialNeedsRefresh(fakeCredential, 1800001, decodeJwt), true);
 assert.strictEqual(sync.googleCredentialNeedsRefresh('invalide', 0, decodeJwt), true);
+const searchableExercise = { name: 'Handstand push-ups', category: 'Équilibre', subcategory: 'Poussée', level: 'Avancé', aliases: ['HSPU strict'] };
+assert.strictEqual(sync.exerciseMatchesSearch(searchableExercise, 'handstand'), true);
+assert.strictEqual(sync.exerciseMatchesSearch(searchableExercise, 'equilibre avance'), true);
+assert.strictEqual(sync.exerciseMatchesSearch(searchableExercise, 'hspu'), true);
+assert.strictEqual(sync.exerciseMatchesSearch(searchableExercise, 'front lever'), false);
+assert.strictEqual(sync.exerciseMatchesSearch(searchableExercise, ''), true);
 
 const existingExercises = [
   { name: 'Dips', matchKey: 'dips', seriesCount: 3, targets: [10, 9, 8], note: 'conserver' },

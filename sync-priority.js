@@ -76,6 +76,18 @@
     return !expiresAt || expiresAt - now < 5 * 60 * 1000;
   }
 
+  function normalizedExerciseSearch(value) {
+    return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function exerciseMatchesSearch(exercise, query) {
+    const normalizedQuery = normalizedExerciseSearch(query);
+    if (!normalizedQuery) return true;
+    const item = typeof exercise === 'string' ? { name: exercise } : exercise || {};
+    const searchable = normalizedExerciseSearch([item.name, item.category, item.subcategory, item.level, ...(item.aliases || [])].filter(Boolean).join(' '));
+    return normalizedQuery.split(/\s+/).every((term) => searchable.includes(term));
+  }
+
   function reconcileSessionExercises(existingExercises, exerciseDrafts) {
     const existingByKey = new Map((existingExercises || []).map((exercise) => [exerciseIdentity(exercise), exercise]));
     return (exerciseDrafts || []).map((draft) => {
@@ -103,7 +115,7 @@
     return { ...progress, values, manualSets };
   }
 
-  root.SessionSyncPriority = { SESSION_FIELDS, buildSessionOverride, applySessionOverride, compactSessionOverride, effectiveSetValues, effectiveComment, normalizeSeriesCount, plannedSeriesCount, googleCredentialExpiresAt, googleCredentialNeedsRefresh, reconcileSessionExercises, remapSessionProgress };
+  root.SessionSyncPriority = { SESSION_FIELDS, buildSessionOverride, applySessionOverride, compactSessionOverride, effectiveSetValues, effectiveComment, normalizeSeriesCount, plannedSeriesCount, googleCredentialExpiresAt, googleCredentialNeedsRefresh, exerciseMatchesSearch, reconcileSessionExercises, remapSessionProgress };
 })(globalThis);
 
 if (typeof module !== 'undefined' && module.exports) module.exports = globalThis.SessionSyncPriority;

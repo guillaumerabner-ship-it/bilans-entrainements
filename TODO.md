@@ -25,7 +25,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [ ] Valider sur plusieurs rechargements que l’accueil reste fluide après une synchronisation Google Sheet.
 - [x] **PRIORITÉ HAUTE — Corriger la modification d’une séance** afin de pouvoir ajouter et supprimer des exercices dans une séance existante, en conservant les séries, les résultats et les marqueurs de saisie des exercices qui ne changent pas.
 - [x] Préciser le nombre de séries pour chaque exercice lors de la création ou de la modification d’une séance, puis afficher ce nombre dans les séances à faire du calendrier et dans leur fiche.
-- [ ] Prévoir une barre de recherche pour retrouver rapidement un exercice dans l’écran de création ou de modification d’une séance, dans les fiches d’entraînement et dans les autres listes d’exercices où elle est pertinente.
+- [x] Prévoir une barre de recherche pour retrouver rapidement un exercice dans l’écran de création ou de modification d’une séance et dans les fiches d’entraînement, avec recherche par nom, famille, niveau et alias ; la bibliothèque complète et l’historique disposent déjà de leur recherche dédiée.
 - [ ] Reprendre et améliorer le système de trophées : revoir les règles de déblocage, la pertinence des objectifs, la progression affichée et la cohérence avec l’historique réel.
 - [x] Activer et valider le filtrage serveur par utilisateur et par élève dans les espaces élève et coach.
 - [x] Déployer le schéma 4 et valider la connexion au service différentiel, le cache Google et les marqueurs de suppression vidéo.
@@ -162,7 +162,7 @@ Ce fichier est la liste de référence du projet. Après chaque évolution, dép
 - [x] Héberger `index.html`, `styles.css` et `app.js` sur Internet avec GitHub Pages et un déploiement automatique GitHub Actions.
 - [x] Ouvrir et configurer l’application depuis un smartphone Samsung : connexion Google, clé privée et synchronisation validées.
 - [x] **PRIORITÉ HAUTE — Corriger la reconnexion sur mobile** : la session autorisée est restaurée depuis le stockage persistant lorsque Chrome/PWA a été fermé par Android, une expiration temporaire ne ferme plus l’application et le jeton Google est renouvelé discrètement au retour au premier plan.
-- [ ] Valider cette reconnexion sur téléphone après plusieurs retours d’arrière-plan, après fermeture forcée de Chrome/PWA et après expiration du jeton Google.
+- [ ] Continuer la validation de la reconnexion mobile : la fermeture puis réouverture de l’application est validée ; il reste à tester plusieurs retours d’arrière-plan, une fermeture forcée de Chrome/PWA et l’expiration naturelle du jeton Google.
 - [ ] Vérifier l’affichage, les dialogues, le calendrier, les séries horizontales et les lecteurs vidéo sur petit écran.
 - [ ] Ajouter l’application à l’écran d’accueil comme application Web.
 - [ ] Tester la synchronisation ordinateur ↔ smartphone.

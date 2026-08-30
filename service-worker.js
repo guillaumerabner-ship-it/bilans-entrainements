@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bilans-app-20260830-15';
+const CACHE_NAME = 'bilans-app-20260830-16';
 const APP_SHELL = ['./', './index.html', './styles.css', './sync-priority.js', './app.js', './manifest.webmanifest', './icons/app-icon.svg'];
 
 self.addEventListener('install', (event) => {
